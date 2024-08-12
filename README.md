@@ -14,7 +14,7 @@ provided by the [cgroup_exporter](https://github.com/treydock/cgroup_exporter), 
 
 cgroup-warden allows requests to be made to modify resource limits per cgroup through the `/control` endpoint. The resources are limited by modifying [systemd](https://systemd.io) properties. An example JSON request is below. 
 
-```json
+```
 {
         property: "CPUQuotaPerSecUSec",
         value: "1000000000"
