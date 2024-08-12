@@ -1,4 +1,4 @@
-module github.com/jay-mckay/cgroup-warden
+module github.com/CHPC-UofU/cgroup-warden
 
 go 1.22
 

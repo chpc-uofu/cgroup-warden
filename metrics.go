@@ -1,3 +1,5 @@
+// Copyright (C) 2024 Center for High Performance Computing <helpdesk@chpc.utah.edu>
+
 package main
 
 import (
