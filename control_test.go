@@ -2,24 +2,6 @@ package main
 
 import "testing"
 
-func TestConstructProperty(t *testing.T) {
-
-	testCases := []property{
-		{Name: "CPUSecPerUSec", Value: "-1"},
-		{Name: "MemoryAccounting", Value: "-1"},
-		{Name: "MemoryMax", Value: "100000000"},
-		{Name: "CPUAccounting", Value: "true"},
-	}
-
-	for _, tc := range testCases {
-		_, err := constructProperty(tc)
-		if err != nil {
-			t.Fail()
-		}
-	}
-
-}
-
 func TestResolveUser(t *testing.T) {
 	var prop property
 	unit := "user-0.slice"

@@ -65,7 +65,8 @@ func controlHandler() http.HandlerFunc {
 			return
 		}
 
-		property, err := constructProperty(request.Property)
+		value, err := dbus.ParseVariant(request.Property.Value, dbus.Signature{})
+		property := systemd.Property{Name: request.Property.Name, Value: value}
 		if err != nil {
 			slog.Warn("unable to construct  property", "err", err.Error(), "request", request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -96,19 +97,6 @@ func controlHandler() http.HandlerFunc {
 			slog.Error("unable to send encode response", "error", err.Error())
 		}
 	}
-}
-
-func constructProperty(candidate property) (systemd.Property, error) {
-	var property systemd.Property
-
-	value, err := dbus.ParseVariant(candidate.Value, dbus.Signature{})
-	if err != nil {
-		return property, err
-	}
-
-	property.Value = value
-	property.Name = candidate.Name
-	return property, err
 }
 
 func resolveUser(request controlRequest) (string, string, error) {
