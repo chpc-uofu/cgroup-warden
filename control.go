@@ -40,9 +40,9 @@ type controlRequest struct {
 }
 
 type controlResponse struct {
-	Message  string `json:"message"`
-	Unit     string `json:"unit,omitempty"`
-	Username string `json:"username,omitempty"`
+	Unit     string   `json:"unit"`
+	Username string   `json:"username"`
+	Property property `json:"property"`
 }
 
 func controlHandler() http.HandlerFunc {
@@ -90,6 +90,7 @@ func controlHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
+		response.Property = request.Property
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
 			slog.Error("unable to send encode response", "error", err.Error())
