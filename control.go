@@ -110,56 +110,37 @@ func constructProperty(candidate property) (systemd.Property, error) {
 	return property, err
 }
 
-func resolveUser(request controlRequest) (username string, unit string, err error) {
-	if request.Unit != nil && request.Username != nil {
-		username, err = resolveUsername(*request.Unit)
-		if err != nil {
-			return
-		}
-		unit, err = resolveUnit(*request.Unit)
-		if err != nil {
-			return
-		}
-		if username != *request.Username || unit != *request.Unit {
-			err = errors.New("unit and username do not match")
-			return
-		}
-	}
+func resolveUser(request controlRequest) (string, string, error) {
+
+	var unit string
+	var username string
+	var err error
+
 	if request.Unit != nil {
-		username, err = resolveUsername(*request.Unit)
-		unit = *request.Unit
-		return
+		username, err = getUsername(*request.Unit)
+		return *request.Unit, username, err
 	}
+
 	if request.Username != nil {
-		unit, err = resolveUnit(*request.Username)
-		username = *request.Username
-		return
+		unit, err := getUnit(*request.Username)
+		return unit, *request.Username, err
 	}
-	err = errors.New("must provide unit or username")
-	return
+
+	return unit, username, errors.New("must provide unit or username")
 }
 
-func resolveUsername(unit string) (username string, err error) {
+func getUsername(unit string) (string, error) {
 	re := regexp.MustCompile(`user-(\d+)\.slice`)
 	match := re.FindStringSubmatch(unit)
-	var usr *user.User
 	if len(match) != 2 {
-		err = errors.New("invalid unit")
-		return
+		return "", errors.New("invalid unit string")
 	}
-	usr, err = user.LookupId(match[1])
-	if err != nil {
-		return
-	}
-	return usr.Username, nil
+	usr, err := user.LookupId(match[1])
+	return usr.Username, err
 }
 
-func resolveUnit(username string) (unit string, err error) {
-	var usr *user.User
-	usr, err = user.Lookup(username)
-	if err != nil {
-		return
-	}
-	unit = fmt.Sprintf("user-%v.slice", usr.Uid)
-	return
+func getUnit(username string) (string, error) {
+	usr, err := user.Lookup(username)
+	unit := fmt.Sprintf("user-%v.slice", usr.Uid)
+	return unit, err
 }
