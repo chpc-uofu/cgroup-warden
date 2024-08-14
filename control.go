@@ -7,14 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os/user"
 	"regexp"
-	"strconv"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	dbus "github.com/godbus/dbus/v5"
 )
 
@@ -47,7 +45,7 @@ type controlResponse struct {
 	Username string `json:"username,omitempty"`
 }
 
-func controlHandler(logger log.Logger) http.HandlerFunc {
+func controlHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		var request controlRequest
@@ -55,24 +53,28 @@ func controlHandler(logger log.Logger) http.HandlerFunc {
 
 		err = json.NewDecoder(r.Body).Decode(&request)
 		if err != nil {
+			slog.Warn("unable to decode json request", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		response.Unit, response.Username, err = resolveUser(request)
 		if err != nil {
+			slog.Warn("unable to resolve user", "err", err.Error(), "request", request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		property, err := constructProperty(request.Property)
 		if err != nil {
+			slog.Warn("unable to construct  property", "err", err.Error(), "request", request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		sysconn, err := newSystemdConn()
 		if err != nil {
+			slog.Warn("unable to connect to systemd", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -80,6 +82,7 @@ func controlHandler(logger log.Logger) http.HandlerFunc {
 
 		err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, response.Unit, request.Runtime, property)
 		if err != nil {
+			slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", response.Unit)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -89,33 +92,20 @@ func controlHandler(logger log.Logger) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
-			level.Error(logger).Log("msg", "error sending response", "err", err)
+			slog.Error("unable to send encode response", "error", err.Error())
 		}
 	}
 }
 
 func constructProperty(candidate property) (systemd.Property, error) {
-	var value any
-	var err error
 	var property systemd.Property
-	switch candidate.Name {
-	case "MemoryMax":
-		value, err = strconv.ParseFloat(candidate.Value, 64)
-	case "CPUQuotaPerSecUSec":
-		value, err = strconv.ParseFloat(candidate.Value, 64)
-	case "MemoryAccounting":
-		value, err = strconv.ParseBool(candidate.Value)
-	case "CPUAccounting":
-		value, err = strconv.ParseBool(candidate.Value)
-	default:
-		value, err = nil, fmt.Errorf("%v is not a valid property", candidate.Name)
-	}
 
+	value, err := dbus.ParseVariant(candidate.Value, dbus.Signature{})
 	if err != nil {
 		return property, err
 	}
 
-	property.Value = dbus.MakeVariant(value)
+	property.Value = value
 	property.Name = candidate.Name
 	return property, err
 }
