@@ -1,4 +1,4 @@
-module github.com/CHPC-UofU/cgroup-warden
+module github.com/chpc-uofu/cgroup-warden
 
 go 1.22
 
