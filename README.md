@@ -21,11 +21,6 @@ cgroup-warden allows requests to be made to modify resource limits per cgroup th
 ## Install
 Download the [latest release](https://github.com/CHPC-UofU/releases)
 
-## Build
-```bash
-go get github.com/CHPC-UofU/cgroup-warden
-```
-
 ## Contribute
 Contributions are welcomed. To contribute, fork this repository on GitHub and submit a pull request with your proposed changes. Bug reports and feature requests are also appreciated, and can be made via GitHub Issues. 
 
