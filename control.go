@@ -7,14 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os/user"
 	"regexp"
-	"strconv"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	dbus "github.com/godbus/dbus/v5"
 )
 
@@ -42,12 +40,12 @@ type controlRequest struct {
 }
 
 type controlResponse struct {
-	Message  string `json:"message"`
-	Unit     string `json:"unit,omitempty"`
-	Username string `json:"username,omitempty"`
+	Unit     string   `json:"unit"`
+	Username string   `json:"username"`
+	Property property `json:"property"`
 }
 
-func controlHandler(logger log.Logger) http.HandlerFunc {
+func controlHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		var request controlRequest
@@ -55,24 +53,29 @@ func controlHandler(logger log.Logger) http.HandlerFunc {
 
 		err = json.NewDecoder(r.Body).Decode(&request)
 		if err != nil {
+			slog.Warn("unable to decode json request", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		response.Unit, response.Username, err = resolveUser(request)
 		if err != nil {
+			slog.Warn("unable to resolve user", "err", err.Error(), "request", request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		property, err := constructProperty(request.Property)
+		value, err := dbus.ParseVariant(request.Property.Value, dbus.Signature{})
+		property := systemd.Property{Name: request.Property.Name, Value: value}
 		if err != nil {
+			slog.Warn("unable to construct  property", "err", err.Error(), "request", request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		sysconn, err := newSystemdConn()
 		if err != nil {
+			slog.Warn("unable to connect to systemd", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -80,6 +83,7 @@ func controlHandler(logger log.Logger) http.HandlerFunc {
 
 		err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, response.Unit, request.Runtime, property)
 		if err != nil {
+			slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", response.Unit)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -87,89 +91,45 @@ func controlHandler(logger log.Logger) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
+		response.Property = request.Property
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
-			level.Error(logger).Log("msg", "error sending response", "err", err)
+			slog.Error("unable to send encode response", "error", err.Error())
 		}
 	}
 }
 
-func constructProperty(candidate property) (systemd.Property, error) {
-	var value any
+func resolveUser(request controlRequest) (string, string, error) {
+
+	var unit string
+	var username string
 	var err error
-	var property systemd.Property
-	switch candidate.Name {
-	case "MemoryMax":
-		value, err = strconv.ParseFloat(candidate.Value, 64)
-	case "CPUQuotaPerSecUSec":
-		value, err = strconv.ParseFloat(candidate.Value, 64)
-	case "MemoryAccounting":
-		value, err = strconv.ParseBool(candidate.Value)
-	case "CPUAccounting":
-		value, err = strconv.ParseBool(candidate.Value)
-	default:
-		value, err = nil, fmt.Errorf("%v is not a valid property", candidate.Name)
-	}
 
-	if err != nil {
-		return property, err
-	}
-
-	property.Value = dbus.MakeVariant(value)
-	property.Name = candidate.Name
-	return property, err
-}
-
-func resolveUser(request controlRequest) (username string, unit string, err error) {
-	if request.Unit != nil && request.Username != nil {
-		username, err = resolveUsername(*request.Unit)
-		if err != nil {
-			return
-		}
-		unit, err = resolveUnit(*request.Unit)
-		if err != nil {
-			return
-		}
-		if username != *request.Username || unit != *request.Unit {
-			err = errors.New("unit and username do not match")
-			return
-		}
-	}
 	if request.Unit != nil {
-		username, err = resolveUsername(*request.Unit)
-		unit = *request.Unit
-		return
+		username, err = getUsername(*request.Unit)
+		return *request.Unit, username, err
 	}
+
 	if request.Username != nil {
-		unit, err = resolveUnit(*request.Username)
-		username = *request.Username
-		return
+		unit, err := getUnit(*request.Username)
+		return unit, *request.Username, err
 	}
-	err = errors.New("must provide unit or username")
-	return
+
+	return unit, username, errors.New("must provide unit or username")
 }
 
-func resolveUsername(unit string) (username string, err error) {
+func getUsername(unit string) (string, error) {
 	re := regexp.MustCompile(`user-(\d+)\.slice`)
 	match := re.FindStringSubmatch(unit)
-	var usr *user.User
 	if len(match) != 2 {
-		err = errors.New("invalid unit")
-		return
+		return "", errors.New("invalid unit string")
 	}
-	usr, err = user.LookupId(match[1])
-	if err != nil {
-		return
-	}
-	return usr.Username, nil
+	usr, err := user.LookupId(match[1])
+	return usr.Username, err
 }
 
-func resolveUnit(username string) (unit string, err error) {
-	var usr *user.User
-	usr, err = user.Lookup(username)
-	if err != nil {
-		return
-	}
-	unit = fmt.Sprintf("user-%v.slice", usr.Uid)
-	return
+func getUnit(username string) (string, error) {
+	usr, err := user.Lookup(username)
+	unit := fmt.Sprintf("user-%v.slice", usr.Uid)
+	return unit, err
 }
