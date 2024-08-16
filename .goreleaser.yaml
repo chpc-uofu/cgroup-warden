@@ -21,7 +21,7 @@ builds:
 
 archives:
   - format: tar.gz
-    name_template: {{ cgroup-warden-{{ .Os }}-{{ .Arch }}-{{ .Version }}
+    name_template: "cgroup-warden-{{ .Os }}-{{ .Arch }}-{{ .Version }}"
     wrap_in_directory: true
     
 changelog:
