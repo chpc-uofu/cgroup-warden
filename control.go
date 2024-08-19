@@ -130,6 +130,9 @@ func getUsername(unit string) (string, error) {
 
 func getUnit(username string) (string, error) {
 	usr, err := user.Lookup(username)
+	if err != nil {
+		return "", err
+	}
 	unit := fmt.Sprintf("user-%v.slice", usr.Uid)
 	return unit, err
 }
