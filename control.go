@@ -11,9 +11,20 @@ import (
 	"net/http"
 	"os/user"
 	"regexp"
+	"strconv"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	dbus "github.com/godbus/dbus/v5"
+)
+
+// A subset of available properties to modify.
+// See https://man7.org/linux/man-pages/man5/systemd.resource-control.5.html.
+var (
+	CPUAccounting      = "CPUAccounting"
+	CPUQuotaPerSecUSec = "CPUQuotaPerSecUSec"
+	MemoryAccounting   = "MemoryAccounting"
+	MemoryHigh         = "MemoryHigh"
+	MemoryMax          = "MemoryMax"
 )
 
 type systemdConn struct {
@@ -63,8 +74,11 @@ func controlHandler() http.HandlerFunc {
 			return
 		}
 
-		variant := dbus.MakeVariant(request.Property.Value)
-		property := systemd.Property{Name: request.Property.Name, Value: variant}
+		property, err := transform(request.Property)
+		if err != nil {
+			slog.Warn("unable to create systemd property", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 
 		sysconn, err := newSystemdConn()
 		if err != nil {
@@ -85,6 +99,7 @@ func controlHandler() http.HandlerFunc {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
 		response := controlResponse{Unit: unit, Username: username, Property: request.Property}
+		response.Property = request.Property
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
 			slog.Error("unable to send encode response", "error", err.Error())
@@ -128,4 +143,23 @@ func getUnit(username string) (string, error) {
 	}
 	unit := fmt.Sprintf("user-%v.slice", usr.Uid)
 	return unit, err
+}
+
+func transform(controlProp controlProperty) (systemd.Property, error) {
+	switch controlProp.Name {
+	case CPUAccounting, MemoryAccounting:
+		val, err := strconv.ParseBool(controlProp.Value)
+		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
+
+	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh:
+		if controlProp.Value == "-1" {
+			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant("-1")}, nil
+		}
+		val, err := strconv.ParseUint(controlProp.Value, 10, 64)
+		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
+
+	default:
+		msg := fmt.Sprintf("property not supported: %v", controlProp.Name)
+		return systemd.Property{}, errors.New(msg)
+	}
 }

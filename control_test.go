@@ -26,7 +26,6 @@ func TestResolveUser(t *testing.T) {
 	if err == nil {
 		t.Fail()
 	}
-
 }
 
 func TestGetUsername(t *testing.T) {
