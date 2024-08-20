@@ -27,51 +27,44 @@ func newSystemdConn() (systemdConn, error) {
 	return systemdConn{conn, ctx}, err
 }
 
-type property struct {
+type controlProperty struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
 
 type controlRequest struct {
-	Unit     *string  `json:"unit"`
-	Username *string  `json:"username"`
-	Property property `json:"property"`
-	Runtime  bool     `json:"runtime"`
+	Unit     *string         `json:"unit"`
+	Username *string         `json:"username"`
+	Property controlProperty `json:"property"`
+	Runtime  bool            `json:"runtime"`
 }
 
 type controlResponse struct {
-	Unit     string   `json:"unit"`
-	Username string   `json:"username"`
-	Property property `json:"property"`
+	Unit     string          `json:"unit"`
+	Username string          `json:"username"`
+	Property controlProperty `json:"property"`
 }
 
 func controlHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		var request controlRequest
-		var response controlResponse
 
-		err = json.NewDecoder(r.Body).Decode(&request)
+		var request controlRequest
+		err := json.NewDecoder(r.Body).Decode(&request)
 		if err != nil {
 			slog.Warn("unable to decode json request", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		response.Unit, response.Username, err = resolveUser(request)
+		unit, username, err := resolveUser(request)
 		if err != nil {
 			slog.Warn("unable to resolve user", "err", err.Error(), "request", request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		value, err := dbus.ParseVariant(request.Property.Value, dbus.Signature{})
-		property := systemd.Property{Name: request.Property.Name, Value: value}
-		if err != nil {
-			slog.Warn("unable to construct  property", "err", err.Error(), "request", request)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		variant := dbus.MakeVariant(request.Property.Value)
+		property := systemd.Property{Name: request.Property.Name, Value: variant}
 
 		sysconn, err := newSystemdConn()
 		if err != nil {
@@ -81,9 +74,9 @@ func controlHandler() http.HandlerFunc {
 		}
 		defer sysconn.conn.Close()
 
-		err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, response.Unit, request.Runtime, property)
+		err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, unit, request.Runtime, property)
 		if err != nil {
-			slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", response.Unit)
+			slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", unit)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -91,7 +84,7 @@ func controlHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
-		response.Property = request.Property
+		response := controlResponse{Unit: unit, Username: username, Property: request.Property}
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
 			slog.Error("unable to send encode response", "error", err.Error())

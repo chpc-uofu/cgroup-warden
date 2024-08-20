@@ -1,9 +1,11 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestResolveUser(t *testing.T) {
-	var prop property
+	var prop controlProperty
 	unit := "user-0.slice"
 	username := "root"
 	testCases := []controlRequest{
