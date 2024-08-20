@@ -43,3 +43,22 @@ func TestGetUnit(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestSetMemoryAccounting(t *testing.T) {
+	tc := controlProperty{Name: "CPUQuotaPerSecUSec", Value: "infinity"}
+
+	sysconn, err := newSystemdConn()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	defer sysconn.conn.Close()
+	unit := "user-1000.slice"
+	property, err := transform(tc)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, unit, true, property)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+}

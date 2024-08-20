@@ -97,9 +97,7 @@ func controlHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(http.StatusOK)
 		response := controlResponse{Unit: unit, Username: username, Property: request.Property}
-		response.Property = request.Property
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
 			slog.Error("unable to send encode response", "error", err.Error())
@@ -152,8 +150,8 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
 
 	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh:
-		if controlProp.Value == "-1" {
-			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant("-1")}, nil
+		if controlProp.Value == "infinity" {
+			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant("infinity")}, nil
 		}
 		val, err := strconv.ParseUint(controlProp.Value, 10, 64)
 		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
