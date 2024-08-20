@@ -59,6 +59,7 @@ func main() {
 
 	} else {
 		handler := newHandler()
+		log.Println("running in insecure mode")
 		log.Fatal(http.ListenAndServe(listenAddr, handler))
 	}
 }
