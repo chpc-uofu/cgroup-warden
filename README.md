@@ -1,6 +1,7 @@
 # cgroup-warden
 
 [![License: GPL v2](https://img.shields.io/badge/License-GPL_v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![Go Reference](https://pkg.go.dev/badge/github.com/chpc-uofu/cgroup-warden.svg)](https://pkg.go.dev/github.com/chpc-uofu/cgroup-warden)
 
 
 cgroup-warden is a daemon that provides a way to set resource limits on those cgroups. Created to support CHPC's [Arbiter](https://github.com/chpc-uofu/arbiter), but it may also run stand-alone. 
