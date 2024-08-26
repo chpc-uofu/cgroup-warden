@@ -21,7 +21,7 @@ func authorize(next http.Handler, secret string) http.Handler {
 
 func newHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/control", controlHandler())
+	mux.Handle("/control", ControlHandler)
 	mux.Handle("/", http.NotFoundHandler())
 	var handler http.Handler = mux
 	return handler

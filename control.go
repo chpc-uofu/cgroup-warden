@@ -17,6 +17,8 @@ import (
 	dbus "github.com/godbus/dbus/v5"
 )
 
+const MAX_UINT64 uint64 = ^uint64(0)
+
 // A subset of available properties to modify.
 // See https://man7.org/linux/man-pages/man5/systemd.resource-control.5.html.
 var (
@@ -56,52 +58,52 @@ type controlResponse struct {
 	Property controlProperty `json:"property"`
 }
 
-func controlHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+var ControlHandler = http.HandlerFunc(controlHandler)
 
-		var request controlRequest
-		err := json.NewDecoder(r.Body).Decode(&request)
-		if err != nil {
-			slog.Warn("unable to decode json request", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+func controlHandler(w http.ResponseWriter, r *http.Request) {
 
-		unit, username, err := resolveUser(request)
-		if err != nil {
-			slog.Warn("unable to resolve user", "err", err.Error(), "request", request)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	var request controlRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		slog.Warn("unable to decode json request", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-		property, err := transform(request.Property)
-		if err != nil {
-			slog.Warn("unable to create systemd property", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		}
+	unit, username, err := resolveUser(request)
+	if err != nil {
+		slog.Warn("unable to resolve user", "err", err.Error(), "request", request)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-		sysconn, err := newSystemdConn()
-		if err != nil {
-			slog.Warn("unable to connect to systemd", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer sysconn.conn.Close()
+	property, err := transform(request.Property)
+	if err != nil {
+		slog.Warn("unable to create systemd property", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
 
-		err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, unit, request.Runtime, property)
-		if err != nil {
-			slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", unit)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	sysconn, err := newSystemdConn()
+	if err != nil {
+		slog.Warn("unable to connect to systemd", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer sysconn.conn.Close()
 
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		response := controlResponse{Unit: unit, Username: username, Property: request.Property}
-		err = json.NewEncoder(w).Encode(response)
-		if err != nil {
-			slog.Error("unable to send encode response", "error", err.Error())
-		}
+	err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, unit, request.Runtime, property)
+	if err != nil {
+		slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", unit)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	response := controlResponse{Unit: unit, Username: username, Property: request.Property}
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		slog.Error("unable to send encode response", "error", err.Error())
 	}
 }
 
@@ -150,8 +152,9 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
 
 	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh:
-		if controlProp.Value == "infinity" {
-			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant("infinity")}, nil
+		var val uint64
+		if controlProp.Value == "-1" {
+			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(MAX_UINT64)}, nil
 		}
 		val, err := strconv.ParseUint(controlProp.Value, 10, 64)
 		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
