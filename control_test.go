@@ -1,10 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -79,31 +75,6 @@ func TestTransform(t *testing.T) {
 	bad_prop := controlProperty{Name: "NotAProp", Value: "Bogus"}
 	_, err := transform(bad_prop)
 	if err == nil {
-		t.Fail()
-	}
-}
-
-// this test requires priviledge
-func TestControlHandler(t *testing.T) {
-	mockControlRequest := map[string]interface{}{
-		"unit": "user-1000.slice",
-		"property": map[string]interface{}{
-			"name":  "CPUAccounting",
-			"value": "true",
-		},
-		"runtime": true,
-	}
-	payload, _ := json.Marshal(mockControlRequest)
-	req := httptest.NewRequest("POST", "/control", bytes.NewReader(payload))
-	w := httptest.NewRecorder()
-	ControlHandler(w, req)
-	resp := w.Result()
-	var cr controlResponse
-	err := json.NewDecoder(resp.Body).Decode(&cr)
-	if err != nil {
-		t.Fail()
-	}
-	if resp.StatusCode != http.StatusOK {
 		t.Fail()
 	}
 }
