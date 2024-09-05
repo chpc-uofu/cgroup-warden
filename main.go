@@ -44,7 +44,6 @@ func main() {
 	var handler http.Handler = mux
 
 	if !insecure {
-		mux.Handle("/control", authorize(ControlHandler, bearerToken))
 		if certFile == "" {
 			log.Fatal("certificate required for use with tls")
 		}
