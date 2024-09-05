@@ -84,9 +84,9 @@ func TestTransform(t *testing.T) {
 }
 
 // this test requires priviledge
-func _TestControlHandler(t *testing.T) {
+func TestControlHandler(t *testing.T) {
 	mockControlRequest := map[string]interface{}{
-		"unit": "user-0.slice",
+		"unit": "user-1000.slice",
 		"property": map[string]interface{}{
 			"name":  "CPUAccounting",
 			"value": "true",

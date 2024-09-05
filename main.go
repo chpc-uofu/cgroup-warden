@@ -1,5 +1,3 @@
-// Copyright (C) 2024 Center for High Performance Computing <helpdesk@chpc.utah.edu>
-
 package main
 
 import (
@@ -22,6 +20,7 @@ func authorize(next http.Handler, secret string) http.Handler {
 func newHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/control", ControlHandler)
+	mux.Handle("/metrics", MetricsHandler)
 	mux.Handle("/", http.NotFoundHandler())
 	var handler http.Handler = mux
 	return handler

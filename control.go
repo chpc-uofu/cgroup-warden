@@ -1,5 +1,3 @@
-// Copyright (C) 2024 Center for High Performance Computing <helpdesk@chpc.utah.edu>
-
 package main
 
 import (
@@ -19,8 +17,6 @@ import (
 
 const MAX_UINT64 uint64 = ^uint64(0)
 
-// A subset of available properties to modify.
-// See https://man7.org/linux/man-pages/man5/systemd.resource-control.5.html.
 var (
 	CPUAccounting      = "CPUAccounting"
 	CPUQuotaPerSecUSec = "CPUQuotaPerSecUSec"
@@ -28,17 +24,6 @@ var (
 	MemoryHigh         = "MemoryHigh"
 	MemoryMax          = "MemoryMax"
 )
-
-type systemdConn struct {
-	conn *systemd.Conn
-	ctx  context.Context
-}
-
-func newSystemdConn() (systemdConn, error) {
-	ctx := context.Background()
-	conn, err := systemd.NewSystemConnectionContext(ctx)
-	return systemdConn{conn, ctx}, err
-}
 
 type controlProperty struct {
 	Name  string `json:"name"`
@@ -83,15 +68,16 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
-	sysconn, err := newSystemdConn()
+	ctx := context.Background()
+	conn, err := systemd.NewSystemConnectionContext(ctx)
 	if err != nil {
 		slog.Warn("unable to connect to systemd", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer sysconn.conn.Close()
+	defer conn.Close()
 
-	err = sysconn.conn.SetUnitPropertiesContext(sysconn.ctx, unit, request.Runtime, property)
+	err = conn.SetUnitPropertiesContext(ctx, unit, request.Runtime, property)
 	if err != nil {
 		slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", unit)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
