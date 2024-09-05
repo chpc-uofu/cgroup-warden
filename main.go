@@ -17,30 +17,31 @@ func authorize(next http.Handler, secret string) http.Handler {
 	})
 }
 
-func newHandler() http.Handler {
-	mux := http.NewServeMux()
-	mux.Handle("/control", ControlHandler)
-	mux.Handle("/metrics", MetricsHandler)
-	mux.Handle("/", http.NotFoundHandler())
-	var handler http.Handler = mux
-	return handler
-}
-
 func main() {
 	var (
+		pattern     string
 		listenAddr  string
 		certFile    string
 		keyFile     string
 		bearerToken string
 		insecure    bool
+		collectProc bool
 	)
 
+	flag.StringVar(&pattern, "pattern", "user-*.slice", "unit pattern to match units on")
 	flag.StringVar(&listenAddr, "listenAddr", ":2112", "address to listen on for telemetry")
 	flag.StringVar(&certFile, "certFile", "", "file containing certificate to use for tls")
 	flag.StringVar(&keyFile, "keyFile", "", "file containing key to use for tls")
 	flag.StringVar(&bearerToken, "bearerToken", "", "bearer token to use for authentication")
 	flag.BoolVar(&insecure, "insecure", false, "disable tls and bearer token authentication")
+	flag.BoolVar(&collectProc, "collectProc", false, "enable the collection of process metrics")
 	flag.Parse()
+
+	mux := http.NewServeMux()
+	mux.Handle("/control", ControlHandler)
+	mux.Handle("/metrics", MetricsHandler(pattern, collectProc))
+	mux.Handle("/", http.NotFoundHandler())
+	var handler http.Handler = mux
 
 	if !insecure {
 		if certFile == "" {
@@ -53,11 +54,9 @@ func main() {
 			log.Fatal("token of length > 16 required for authentication")
 		}
 
-		handler := authorize(newHandler(), bearerToken)
-		log.Fatal(http.ListenAndServeTLS(listenAddr, certFile, keyFile, handler))
+		log.Fatal(http.ListenAndServeTLS(listenAddr, certFile, keyFile, authorize(handler, bearerToken)))
 
 	} else {
-		handler := newHandler()
 		log.Println("running in insecure mode")
 		log.Fatal(http.ListenAndServe(listenAddr, handler))
 	}
