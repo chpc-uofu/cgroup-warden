@@ -38,12 +38,11 @@ func main() {
 	flag.Parse()
 
 	mux := http.NewServeMux()
-	mux.Handle("/control", authorize(ControlHandler, bearerToken))
 	mux.Handle("/metrics", MetricsHandler(pattern, collectProc))
 	mux.Handle("/", http.NotFoundHandler())
-	var handler http.Handler = mux
 
 	if !insecure {
+		mux.Handle("/control", authorize(ControlHandler, bearerToken))
 		if certFile == "" {
 			log.Fatal("certificate required for use with tls")
 		}
@@ -54,10 +53,11 @@ func main() {
 			log.Fatal("token of length > 16 required for authentication")
 		}
 
-		log.Fatal(http.ListenAndServeTLS(listenAddr, certFile, keyFile, handler))
+		log.Fatal(http.ListenAndServeTLS(listenAddr, certFile, keyFile, mux))
 
 	} else {
+		mux.Handle("/control", ControlHandler)
 		log.Println("running in insecure mode")
-		log.Fatal(http.ListenAndServe(listenAddr, handler))
+		log.Fatal(http.ListenAndServe(listenAddr, mux))
 	}
 }
