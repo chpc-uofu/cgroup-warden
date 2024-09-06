@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os/user"
-	"regexp"
 	"strconv"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
@@ -17,12 +15,16 @@ import (
 
 const MAX_UINT64 uint64 = ^uint64(0)
 
+// properties that can be modified at runtime,
+// see
 var (
 	CPUAccounting      = "CPUAccounting"
 	CPUQuotaPerSecUSec = "CPUQuotaPerSecUSec"
 	MemoryAccounting   = "MemoryAccounting"
 	MemoryHigh         = "MemoryHigh"
 	MemoryMax          = "MemoryMax"
+	MemoryLow          = "MemoryLow"
+	MemoryMin          = "MemoryMin"
 )
 
 type controlProperty struct {
@@ -31,15 +33,13 @@ type controlProperty struct {
 }
 
 type controlRequest struct {
-	Unit     *string         `json:"unit"`
-	Username *string         `json:"username"`
+	Unit     string          `json:"unit"`
 	Property controlProperty `json:"property"`
 	Runtime  bool            `json:"runtime"`
 }
 
 type controlResponse struct {
 	Unit     string          `json:"unit"`
-	Username string          `json:"username"`
 	Property controlProperty `json:"property"`
 }
 
@@ -51,13 +51,6 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		slog.Warn("unable to decode json request", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	unit, username, err := resolveUser(request)
-	if err != nil {
-		slog.Warn("unable to resolve user", "err", err.Error(), "request", request)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -77,58 +70,20 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	err = conn.SetUnitPropertiesContext(ctx, unit, request.Runtime, property)
+	err = conn.SetUnitPropertiesContext(ctx, request.Unit, request.Runtime, property)
 	if err != nil {
-		slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", unit)
+		slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", request.Unit)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	response := controlResponse{Unit: unit, Username: username, Property: request.Property}
+	response := controlResponse{Unit: request.Unit, Property: request.Property}
 	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		slog.Error("unable to send encode response", "error", err.Error())
 	}
-}
-
-func resolveUser(request controlRequest) (string, string, error) {
-
-	var unit string
-	var username string
-	var err error
-
-	if request.Unit != nil {
-		username, err = getUsername(*request.Unit)
-		return *request.Unit, username, err
-	}
-
-	if request.Username != nil {
-		unit, err := getUnit(*request.Username)
-		return unit, *request.Username, err
-	}
-
-	return unit, username, errors.New("must provide unit or username")
-}
-
-func getUsername(unit string) (string, error) {
-	re := regexp.MustCompile(`user-(\d+)\.slice`)
-	match := re.FindStringSubmatch(unit)
-	if len(match) != 2 {
-		return "", errors.New("invalid unit string")
-	}
-	usr, err := user.LookupId(match[1])
-	return usr.Username, err
-}
-
-func getUnit(username string) (string, error) {
-	usr, err := user.Lookup(username)
-	if err != nil {
-		return "", err
-	}
-	unit := fmt.Sprintf("user-%v.slice", usr.Uid)
-	return unit, err
 }
 
 func transform(controlProp controlProperty) (systemd.Property, error) {
@@ -137,7 +92,7 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		val, err := strconv.ParseBool(controlProp.Value)
 		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
 
-	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh:
+	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow:
 		var val uint64
 		if controlProp.Value == "-1" {
 			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(MAX_UINT64)}, nil
