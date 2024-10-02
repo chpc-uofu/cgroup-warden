@@ -4,8 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"os/user"
-	"regexp"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,8 +22,10 @@ func MetricsHandler(pattern string, collectProc bool) http.HandlerFunc {
 }
 
 var namespace = "systemd_unit"
-var labels = []string{"unit", "username"}
-var procLabels = []string{"unit", "username", "proc"}
+var labels = []string{"unit"}
+var procLabels = []string{"unit", "proc"}
+
+const NSPerSec = 1000000000 // billion
 
 type Collector struct {
 	pattern          string
@@ -45,17 +45,16 @@ type Collector struct {
 }
 
 type Metric struct {
-	memoryAccounting bool
-	memoryMax        uint64
-	memoryMin        uint64
-	memoryHigh       uint64
-	memoryLow        uint64
+	memoryMax        int64
+	memoryMin        int64
+	memoryHigh       int64
+	memoryLow        int64
 	memoryCurrent    uint64
+	cpuQuota         int64
+	memoryAccounting bool
 	cpuAccounting    bool
 	cpuUsage         uint64
-	cpuQuota         uint64
 	unit             string
-	username         string
 	processes        map[string]*Process
 }
 
@@ -85,11 +84,11 @@ func NewCollector(pattern string, collectProc bool) *Collector {
 			"Whether CPU accounting is enabled", labels, nil),
 		cpuUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "usage_ns"),
 			"Total CPU usage", labels, nil),
-		cpuQuota: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "quota_ns_per_s"),
+		cpuQuota: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "quota_us_per_s"),
 			"CPU Quota", labels, nil),
-		procCPU: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "cpu_seconds"),
+		procCPU: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "cpu_usage_ns"),
 			"Aggregate CPU usage for this process", procLabels, nil),
-		procMemory: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_bytes"),
+		procMemory: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_current_bytes"),
 			"Aggregate memory usage for this process", procLabels, nil),
 		procCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "count"),
 			"Instance count of this process", procLabels, nil),
@@ -116,20 +115,20 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	metrics := c.collectMetrics()
 	for _, m := range metrics {
-		ch <- prometheus.MustNewConstMetric(c.memoryAccounting, prometheus.GaugeValue, b2f(m.memoryAccounting), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, float64(m.memoryMax), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.memoryMin, prometheus.GaugeValue, float64(m.memoryMin), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.memoryHigh, prometheus.GaugeValue, float64(m.memoryHigh), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.memoryLow, prometheus.GaugeValue, float64(m.memoryLow), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.memoryCurrent, prometheus.GaugeValue, float64(m.memoryCurrent), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.cpuAccounting, prometheus.GaugeValue, b2f(m.cpuAccounting), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, float64(m.cpuUsage), m.unit, m.username)
-		ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.CounterValue, float64(m.cpuQuota), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryAccounting, prometheus.GaugeValue, b2f(m.memoryAccounting), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, float64(m.memoryMax), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryMin, prometheus.GaugeValue, float64(m.memoryMin), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryHigh, prometheus.GaugeValue, float64(m.memoryHigh), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryLow, prometheus.GaugeValue, float64(m.memoryLow), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryCurrent, prometheus.GaugeValue, float64(m.memoryCurrent), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.cpuAccounting, prometheus.GaugeValue, b2f(m.cpuAccounting), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, float64(m.cpuUsage), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.CounterValue, float64(m.cpuQuota), m.unit)
 		if c.collectProc {
 			for name, p := range m.processes {
-				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.GaugeValue, p.cpu, m.unit, m.username, name)
-				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), m.unit, m.username, name)
-				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), m.unit, m.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.GaugeValue, p.cpu, m.unit, name)
+				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), m.unit, name)
+				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), m.unit, name)
 			}
 		}
 	}
@@ -159,17 +158,17 @@ func (c *Collector) collectMetrics() []Metric {
 			continue
 		}
 		metric := Metric{
+			// we cast the 'limits' as int64 so -1 is exported properly
 			memoryAccounting: props["MemoryAccounting"].(bool),
-			memoryMax:        props["MemoryMax"].(uint64),
-			memoryMin:        props["MemoryMin"].(uint64),
-			memoryHigh:       props["MemoryHigh"].(uint64),
-			memoryLow:        props["MemoryLow"].(uint64),
+			memoryMax:        int64(props["MemoryMax"].(uint64)),
+			memoryMin:        int64(props["MemoryMin"].(uint64)),
+			memoryHigh:       int64(props["MemoryHigh"].(uint64)),
+			memoryLow:        int64(props["MemoryLow"].(uint64)),
 			memoryCurrent:    props["MemoryCurrent"].(uint64),
 			cpuAccounting:    props["CPUAccounting"].(bool),
 			cpuUsage:         props["CPUUsageNSec"].(uint64),
-			cpuQuota:         props["CPUQuotaPerSecUSec"].(uint64),
+			cpuQuota:         int64(props["CPUQuotaPerSecUSec"].(uint64)),
 			unit:             unit.Name,
-			username:         lookupUsername(unit),
 		}
 		if c.collectProc {
 			procs, err := collectProcesses(conn, ctx, unit.Name)
@@ -223,31 +222,14 @@ func collectProcesses(conn *systemd.Conn, ctx context.Context, unit string) (map
 
 		val, ok := processes[comm]
 		if !ok {
-			processes[comm] = &Process{cpu: stat.CPUTime(), memory: smaps.Pss, count: 1}
+			processes[comm] = &Process{cpu: stat.CPUTime() * NSPerSec, memory: smaps.Pss, count: 1}
 		} else {
-			val.cpu += stat.CPUTime()
+			val.cpu += (stat.CPUTime() * NSPerSec)
 			val.memory += smaps.Pss
 			val.count += 1
 		}
 	}
 	return processes, nil
-}
-
-func lookupUsername(unit systemd.UnitStatus) string {
-	pattern := `^user-(\d+)\.slice$`
-	re := regexp.MustCompile(pattern)
-	match := re.FindStringSubmatch(unit.Name)
-
-	if len(match) < 1 {
-		return "unknown user"
-	}
-
-	user, err := user.LookupId(match[1])
-	if err != nil {
-		return "unknown user"
-	}
-
-	return user.Username
 }
 
 func b2f(b bool) float64 {
