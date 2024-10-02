@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os/user"
+	"regexp"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,8 +24,8 @@ func MetricsHandler(pattern string, collectProc bool) http.HandlerFunc {
 }
 
 var namespace = "systemd_unit"
-var labels = []string{"unit"}
-var procLabels = []string{"unit", "proc"}
+var labels = []string{"unit", "username"}
+var procLabels = []string{"unit", "username", "proc"}
 
 const NSPerSec = 1000000000 // billion
 
@@ -55,6 +57,7 @@ type Metric struct {
 	cpuAccounting    bool
 	cpuUsage         uint64
 	unit             string
+	username         string
 	processes        map[string]*Process
 }
 
@@ -115,20 +118,20 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	metrics := c.collectMetrics()
 	for _, m := range metrics {
-		ch <- prometheus.MustNewConstMetric(c.memoryAccounting, prometheus.GaugeValue, b2f(m.memoryAccounting), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, float64(m.memoryMax), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.memoryMin, prometheus.GaugeValue, float64(m.memoryMin), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.memoryHigh, prometheus.GaugeValue, float64(m.memoryHigh), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.memoryLow, prometheus.GaugeValue, float64(m.memoryLow), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.memoryCurrent, prometheus.GaugeValue, float64(m.memoryCurrent), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.cpuAccounting, prometheus.GaugeValue, b2f(m.cpuAccounting), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, float64(m.cpuUsage), m.unit)
-		ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.CounterValue, float64(m.cpuQuota), m.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryAccounting, prometheus.GaugeValue, b2f(m.memoryAccounting), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, float64(m.memoryMax), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryMin, prometheus.GaugeValue, float64(m.memoryMin), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryHigh, prometheus.GaugeValue, float64(m.memoryHigh), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryLow, prometheus.GaugeValue, float64(m.memoryLow), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryCurrent, prometheus.GaugeValue, float64(m.memoryCurrent), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.cpuAccounting, prometheus.GaugeValue, b2f(m.cpuAccounting), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, float64(m.cpuUsage), m.unit, m.username)
+		ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.CounterValue, float64(m.cpuQuota), m.unit, m.username)
 		if c.collectProc {
 			for name, p := range m.processes {
-				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.GaugeValue, p.cpu, m.unit, name)
-				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), m.unit, name)
-				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), m.unit, name)
+				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.GaugeValue, p.cpu, m.unit, m.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), m.unit, m.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), m.unit, m.username, name)
 			}
 		}
 	}
@@ -169,6 +172,7 @@ func (c *Collector) collectMetrics() []Metric {
 			cpuUsage:         props["CPUUsageNSec"].(uint64),
 			cpuQuota:         int64(props["CPUQuotaPerSecUSec"].(uint64)),
 			unit:             unit.Name,
+			username:         lookupUsername(unit),
 		}
 		if c.collectProc {
 			procs, err := collectProcesses(conn, ctx, unit.Name)
@@ -230,6 +234,23 @@ func collectProcesses(conn *systemd.Conn, ctx context.Context, unit string) (map
 		}
 	}
 	return processes, nil
+}
+
+func lookupUsername(unit systemd.UnitStatus) string {
+	pattern := `^user-(\d+)\.slice$`
+	re := regexp.MustCompile(pattern)
+	match := re.FindStringSubmatch(unit.Name)
+
+	if len(match) < 1 {
+		return "unknown user"
+	}
+
+	user, err := user.LookupId(match[1])
+	if err != nil {
+		return "unknown user"
+	}
+
+	return user.Username
 }
 
 func b2f(b bool) float64 {
