@@ -35,14 +35,11 @@ type controlRequest struct {
 	Runtime  bool            `json:"runtime"`
 }
 
-type controlResponse struct {
-	Unit     string          `json:"unit"`
-	Property controlProperty `json:"property"`
-}
-
 var ControlHandler = http.HandlerFunc(controlHandler)
 
 func controlHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	var request controlRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -74,14 +71,10 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	response := controlResponse{Unit: request.Unit, Property: request.Property}
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		slog.Error("unable to send encode response", "error", err.Error())
-	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "success")
 }
 
 func transform(controlProp controlProperty) (systemd.Property, error) {
