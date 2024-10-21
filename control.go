@@ -93,7 +93,7 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
 		}
-		property.Value = dbus.MakeVariant(uint(val))
+		property.Value = dbus.MakeVariant(uint64(val))
 
 	default:
 		msg := fmt.Sprintf("property not supported: %v", controlProp.Name)
