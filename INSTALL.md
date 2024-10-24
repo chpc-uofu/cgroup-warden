@@ -11,8 +11,8 @@ This will install to whatever `$GOBIN` evaluates to.
 Alternatively, one can download the latest release [here](https://github.com/chpc-uofu/cgroup-warden/releases/latest).
 You can then extract the download, which will contain the executable.
 ```bash
-VERSION=0.0.5
-PREFIX="/opt/"
+VERSION=0.0.5 # version desired
+PREFIX="/opt/" # wherever you want to install to
 mkdir $PREFIX/
 cd $PREFIX/cgroup-warden
 wget https://github.com/chpc-uofu/cgroup-warden/releases/download/v$VERSION/cgroup-warden-$VERSION.tar.gz/
