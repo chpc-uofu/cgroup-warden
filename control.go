@@ -7,13 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	dbus "github.com/godbus/dbus/v5"
 )
-
-const MAX_UINT64 uint64 = ^uint64(0)
 
 // properties that can be modified at runtime,
 // see
@@ -29,7 +26,7 @@ var (
 
 type controlProperty struct {
 	Name  string `json:"name"`
-	Value string `json:"value"`
+	Value any    `json:"value"`
 }
 
 type controlRequest struct {
@@ -38,14 +35,11 @@ type controlRequest struct {
 	Runtime  bool            `json:"runtime"`
 }
 
-type controlResponse struct {
-	Unit     string          `json:"unit"`
-	Property controlProperty `json:"property"`
-}
-
 var ControlHandler = http.HandlerFunc(controlHandler)
 
 func controlHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	var request controlRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -59,6 +53,7 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("unable to create systemd property", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	ctx := context.Background()
@@ -76,32 +71,35 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	response := controlResponse{Unit: request.Unit, Property: request.Property}
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		slog.Error("unable to send encode response", "error", err.Error())
-	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "success")
 }
 
 func transform(controlProp controlProperty) (systemd.Property, error) {
+	var property systemd.Property
+	property.Name = controlProp.Name
 	switch controlProp.Name {
 	case CPUAccounting, MemoryAccounting:
-		val, err := strconv.ParseBool(controlProp.Value)
-		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
+		val, ok := controlProp.Value.(bool)
+		if !ok {
+			return property, errors.New("invalid type for property, expected bool")
+		}
+		property.Value = dbus.MakeVariant(val)
 
 	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow:
-		var val uint64
-		if controlProp.Value == "-1" {
-			return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(MAX_UINT64)}, nil
+		val, ok := controlProp.Value.(float64) // json type
+		if !ok {
+			return property, errors.New("invalid type for property, expected float64")
 		}
-		val, err := strconv.ParseUint(controlProp.Value, 10, 64)
-		return systemd.Property{Name: controlProp.Name, Value: dbus.MakeVariant(val)}, err
+		property.Value = dbus.MakeVariant(uint64(val))
 
 	default:
 		msg := fmt.Sprintf("property not supported: %v", controlProp.Name)
-		return systemd.Property{}, errors.New(msg)
+		return property, errors.New(msg)
 	}
+
+	return property, nil
+
 }
