@@ -1,10 +1,21 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 )
+
+type wardenConfig struct {
+	pattern  string
+	listen   string
+	cert     string
+	key      string
+	bearer   string
+	insecure bool
+	proc     bool
+}
 
 func authorize(next http.Handler, secret string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -17,47 +28,70 @@ func authorize(next http.Handler, secret string) http.Handler {
 	})
 }
 
-func main() {
-	var (
-		pattern     string
-		listenAddr  string
-		certFile    string
-		keyFile     string
-		bearerToken string
-		insecure    bool
-		collectProc bool
-	)
+func stringEnvRequired(flag string) string {
+	s, set := os.LookupEnv(flag)
+	if !set {
+		log.Fatalf("%s is required", flag)
+	}
+	return s
+}
 
-	flag.StringVar(&pattern, "pattern", "user-*.slice", "unit pattern to match units on")
-	flag.StringVar(&listenAddr, "listenAddr", ":2112", "address to listen on for telemetry")
-	flag.StringVar(&certFile, "certFile", "", "file containing certificate to use for tls")
-	flag.StringVar(&keyFile, "keyFile", "", "file containing key to use for tls")
-	flag.StringVar(&bearerToken, "bearerToken", "", "bearer token to use for authentication")
-	flag.BoolVar(&insecure, "insecure", false, "disable tls and bearer token authentication")
-	flag.BoolVar(&collectProc, "collectProc", false, "enable the collection of process metrics")
-	flag.Parse()
+func stringEnvWithDefault(flag string, value string) string {
+	s, set := os.LookupEnv(flag)
+	if !set {
+		log.Printf("%s not set, using default value of '%s'", flag, value)
+		return value
+	} else {
+		return s
+	}
+}
+
+func boolEnvWithDefault(flag string, value bool) bool {
+	s, set := os.LookupEnv(flag)
+	if !set {
+		log.Printf("%s not set, using default value of '%t'", flag, value)
+		return value
+	} else {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			log.Fatalf("%s set to invalid value of '%s'", flag, s)
+		}
+		return b
+	}
+}
+
+func readConfigFromEnvironment() *wardenConfig {
+	conf := &wardenConfig{}
+
+	conf.listen = stringEnvWithDefault("CGROUP_WARDEN_LISTEN_ADDRESS", ":2112")
+	conf.pattern = stringEnvWithDefault("CGROUP_WARDEN_UNIT_PATTERN", "user-*.slice")
+	conf.insecure = boolEnvWithDefault("CGROUP_WARDEN_INSECURE_MODE", false)
+	conf.proc = boolEnvWithDefault("CGROUP_WARDEN_COLLECT_PROCESS_INFO", true)
+
+	if !conf.insecure {
+		conf.cert = stringEnvRequired("CGROUP_WARDEN_CERTIFICATE")
+		conf.key = stringEnvRequired("CGROUP_WARDEN_PRIVATE_KEY")
+		conf.bearer = stringEnvRequired("CGROUP_WARDEN_BEARER_TOKEN")
+	}
+
+	return conf
+}
+
+func main() {
+	conf := readConfigFromEnvironment()
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", MetricsHandler(pattern, collectProc))
+	mux.Handle("/metrics", MetricsHandler(conf.pattern, conf.proc))
 	mux.Handle("/", http.NotFoundHandler())
 
-	if !insecure {
-		mux.Handle("/control", authorize(ControlHandler, bearerToken))
-		if certFile == "" {
-			log.Fatal("certificate required for use with tls")
-		}
-		if keyFile == "" {
-			log.Fatal("key required for use with tls")
-		}
-		if bearerToken == "" || len(bearerToken) < 16 {
-			log.Fatal("token of length > 16 required for authentication")
-		}
-
-		log.Fatal(http.ListenAndServeTLS(listenAddr, certFile, keyFile, mux))
-
-	} else {
+	if conf.insecure {
 		mux.Handle("/control", ControlHandler)
 		log.Println("running in insecure mode")
-		log.Fatal(http.ListenAndServe(listenAddr, mux))
+		log.Fatal(http.ListenAndServe(conf.listen, mux))
+
+	} else {
+		mux.Handle("/control", authorize(ControlHandler, conf.bearer))
+		log.Println("running in secure mode")
+		log.Fatal(http.ListenAndServeTLS(conf.listen, conf.cert, conf.key, mux))
 	}
 }

@@ -13,7 +13,6 @@ import (
 )
 
 // properties that can be modified at runtime,
-// see
 var (
 	CPUAccounting      = "CPUAccounting"
 	CPUQuotaPerSecUSec = "CPUQuotaPerSecUSec"

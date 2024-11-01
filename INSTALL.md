@@ -28,3 +28,13 @@ go build .
 ```
 
 ## Configure
+
+The following flags are passed as environment variables  
+
+`CGROUP_WARDEN_LISTEN_ADDRESS` : Address for the service to listen on. Defaults to `:2112`.  
+`CGROUP_WARDEN_UNIT_PATTERN` : Unit for service to match systemd units on. Defaults to `user-*.slice`.  
+`CGROUP_WARDEN_INSECURE_MODE` : Whether to run without bearer token authentication and TLS. Defaults to `false`.  
+`CGROUP_WARDEN_COLLECT_PROCESS_INFO` : Whether to collect detailed process usage information. Defaults to `true`.  
+`CGROUP_WARDEN_CERTIFICATE` : Path to TLS certificate. Required if running in secure mode.  
+`CGROUP_WARDEN_PRIVATE_KEY`: Path to TLS private key. Required if running in secure mode.  
+`CGROUP_WARDEN_BEARER_TOKEN` : Bearer token to use for authentication. Required if running in secure mode.   
