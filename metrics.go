@@ -51,11 +51,11 @@ type Metric struct {
 	memoryMin        int64
 	memoryHigh       int64
 	memoryLow        int64
-	memoryCurrent    uint64
+	memoryCurrent    int64
 	cpuQuota         int64
 	memoryAccounting bool
 	cpuAccounting    bool
-	cpuUsage         uint64
+	cpuUsage         int64
 	unit             string
 	username         string
 	processes        map[string]*Process
@@ -160,16 +160,19 @@ func (c *Collector) collectMetrics() []Metric {
 			log.Println(err)
 			continue
 		}
+		// 'GetUnitTypePropertiesContext' may fail to read certain properties, and will return
+		// a default value instead of an error. If this happens, we want to drop the metric.
+
 		metric := Metric{
-			// we cast the 'limits' as int64 so -1 is exported properly
+			// cast the uint64 values as int64 so the max uint64 -> -1
 			memoryAccounting: props["MemoryAccounting"].(bool),
 			memoryMax:        int64(props["MemoryMax"].(uint64)),
 			memoryMin:        int64(props["MemoryMin"].(uint64)),
 			memoryHigh:       int64(props["MemoryHigh"].(uint64)),
 			memoryLow:        int64(props["MemoryLow"].(uint64)),
-			memoryCurrent:    props["MemoryCurrent"].(uint64),
+			memoryCurrent:    int64(props["MemoryCurrent"].(uint64)),
 			cpuAccounting:    props["CPUAccounting"].(bool),
-			cpuUsage:         props["CPUUsageNSec"].(uint64),
+			cpuUsage:         int64(props["CPUUsageNSec"].(uint64)),
 			cpuQuota:         int64(props["CPUQuotaPerSecUSec"].(uint64)),
 			unit:             unit.Name,
 			username:         lookupUsername(unit),
