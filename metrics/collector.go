@@ -3,16 +3,25 @@ package metrics
 import (
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/containerd/cgroups/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/procfs"
+)
+
+const (
+	USPerS     = 1000000    // million
+	NSPerS     = 1000000000 // billion
+	cgroupRoot = "/sys/fs/cgroup"
 )
 
 var (
 	namespace  = "cgroup_warden"
 	labels     = []string{"cgroup", "username"}
 	procLabels = []string{"cgroup", "username", "proc"}
+	lock       = sync.RWMutex{}
 )
 
 // TODO: add meta metrics
@@ -36,6 +45,14 @@ type Collector struct {
 	procCount   *prometheus.Desc
 }
 
+type Metric struct {
+	cgroup      string
+	username    string
+	memoryUsage uint64
+	cpuUsage    float64
+	processes   map[string]Process
+}
+
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.memoryUsage
 	ch <- c.cpuUsage
@@ -45,17 +62,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	var stats []Metric
-	if c.mode == cgroups.Unified {
-		stats = UnifiedMetrics(c.root)
-	} else if c.mode == cgroups.Legacy {
-		stats = LegacyMetrics(c.root)
-	} else if c.mode == cgroups.Hybrid {
-		stats = LegacyMetrics(c.root)
-	} else {
-		log.Println("Could not determine cgroup mode")
-	}
-
+	stats := c.CollectMetrics()
 	for _, s := range stats {
 		ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(s.memoryUsage), s.cgroup, s.username)
 		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, s.cpuUsage, s.cgroup, s.username)
@@ -86,16 +93,94 @@ func NewCollector(root string) *Collector {
 	}
 }
 
+// set of process IDs
+type pidSet map[uint64]bool
+
+// map from a cgroup name to a set of proceess IDs
+type groupPIDMap map[string]pidSet
+
+// legacy or unified cgroup hierarchy
+type hierarchy interface {
+
+	// returns a map of all cgroups underneath the root with their respective PIDs
+	GetGroupsWithPIDs() groupPIDMap
+
+	// creates a metric for the cgroup with the PID information
+	CreateMetric(cgroup string, pids pidSet) Metric
+}
+
+func (c *Collector) CollectMetrics() []Metric {
+
+	var h hierarchy
+	if c.mode == cgroups.Unified {
+		h = &unified{root: c.root}
+	} else {
+		h = &legacy{root: c.root}
+	}
+
+	groupPIDs := h.GetGroupsWithPIDs()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(len(groupPIDs))
+
+	var metrics []Metric
+	for group, pids := range groupPIDs {
+		go func(group string, procs map[uint64]bool) {
+			defer wg.Done()
+			metric := h.CreateMetric(group, pids)
+			lock.Lock()
+			metrics = append(metrics, metric)
+			lock.Unlock()
+		}(group, pids)
+	}
+
+	wg.Wait()
+
+	return metrics
+}
+
 type Process struct {
 	cpu    float64
 	memory uint64
 	count  uint64
 }
 
-type Metric struct {
-	cgroup      string
-	username    string
-	memoryUsage uint64
-	cpuUsage    float64
-	processes   map[string]Process
+func ProcInfo(pids map[uint64]bool) map[string]Process {
+	processes := make(map[string]Process)
+
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		log.Printf("could not mount procfs: %s\n", err)
+		return processes
+	}
+
+	for pid := range pids {
+		proc, err := fs.Proc(int(pid))
+		if err != nil {
+			continue
+		}
+
+		comm, err := proc.Comm()
+		if err != nil {
+			continue
+		}
+
+		stat, err := proc.Stat()
+		if err != nil {
+			continue
+		}
+
+		process, ok := processes[comm]
+		if !ok {
+			process = Process{cpu: 0, memory: 0, count: 0}
+		}
+
+		process.cpu = process.cpu + stat.CPUTime()
+		process.memory = process.memory + uint64(stat.RSS)
+		process.count = process.count + 1
+
+		processes[comm] = process
+	}
+
+	return processes
 }

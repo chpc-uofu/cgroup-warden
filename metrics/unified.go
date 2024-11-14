@@ -3,75 +3,51 @@ package metrics
 import (
 	"log"
 	"strings"
-	"sync"
 
 	"github.com/containerd/cgroups/v3/cgroup2"
-	"github.com/prometheus/procfs"
 )
 
-var lock = sync.RWMutex{}
-
-const USPerS = 1000000 //million
-
-func UnifiedMetrics(root string) []Metric {
-	var metrics []Metric
-
-	groupProcs := getUnifiedPids(root)
-	wg := &sync.WaitGroup{}
-	wg.Add(len(groupProcs))
-
-	for group, pids := range groupProcs {
-		go func(group string, procs map[uint64]bool) {
-			defer wg.Done()
-			stat := getUnifiedStatistics(group, pids)
-			lock.Lock()
-			metrics = append(metrics, stat)
-			lock.Unlock()
-		}(group, pids)
-	}
-
-	wg.Wait()
-
-	return metrics
+type unified struct {
+	root string
 }
 
-func getUnifiedPids(cgroup string) map[string]map[uint64]bool {
+func (u *unified) GetGroupsWithPIDs() groupPIDMap {
 
-	var procs = make(map[string]map[uint64]bool)
+	var pids = make(groupPIDMap)
 
-	manager, err := cgroup2.Load(cgroup)
+	manager, err := cgroup2.Load(u.root)
 	if err != nil {
-		log.Printf("could not load cgroup '%s': %s\n", cgroup, err.Error())
-		return procs
+		log.Printf("could not load cgroup '%s': %s\n", u.root, err.Error())
+		return pids
 	}
 
-	pids, err := manager.Procs(true)
+	procs, err := manager.Procs(true)
 	if err != nil {
-		log.Printf("could not load cgroup '%s' processes: %s\n", cgroup, err.Error())
-		return procs
+		log.Printf("could not load cgroup '%s' processes: %s\n", u.root, err.Error())
+		return pids
 	}
 
-	for _, pid := range pids {
-		path, err := cgroup2.PidGroupPath(int(pid))
+	for _, p := range procs {
+		path, err := cgroup2.PidGroupPath(int(p))
 		if err != nil {
 			continue
 		}
 		dirs := strings.Split(path, "/")
 		group := strings.Join(dirs[0:3], "/")
 
-		groupPids, ok := procs[group]
+		groupPids, ok := pids[group]
 		if !ok {
-			groupPids = make(map[uint64]bool)
+			groupPids = make(pidSet)
 		}
-		groupPids[pid] = true
+		groupPids[p] = true
 
-		procs[group] = groupPids
+		pids[group] = groupPids
 	}
 
-	return procs
+	return pids
 }
 
-func getUnifiedStatistics(group string, pids map[uint64]bool) Metric {
+func (u *unified) CreateMetric(group string, pids pidSet) Metric {
 	var metric Metric
 
 	manager, err := cgroup2.Load(group)
@@ -94,40 +70,7 @@ func getUnifiedStatistics(group string, pids map[uint64]bool) Metric {
 		metric.memoryUsage = stat.Memory.Usage
 	}
 
-	fs, err := procfs.NewDefaultFS()
-	if err != nil {
-		log.Printf("could not mount procfs: %s\n", err)
-	}
+	metric.processes = ProcInfo(pids)
 
-	processes := make(map[string]Process)
-
-	for pid := range pids {
-		proc, err := fs.Proc(int(pid))
-		if err != nil {
-			continue
-		}
-
-		comm, err := proc.Comm()
-		if err != nil {
-			continue
-		}
-
-		stat, err := proc.Stat()
-		if err != nil {
-			continue
-		}
-
-		process, ok := processes[comm]
-		if !ok {
-			process = Process{cpu: 0, memory: 0, count: 0}
-		}
-
-		process.cpu = process.cpu + stat.CPUTime()
-		process.memory = process.memory + uint64(stat.RSS)
-		process.count = process.count + 1
-
-		processes[comm] = process
-	}
-	metric.processes = processes
 	return metric
 }
