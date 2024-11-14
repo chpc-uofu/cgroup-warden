@@ -29,7 +29,7 @@ func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
 
 	for _, p := range procs {
 		dirs := strings.Split(p.Path, "/")
-		group := strings.Join(dirs[1:4], "/")
+		group := "/" + strings.Join(dirs[5:7], "/")
 
 		groupPids, ok := pids[group]
 		if !ok {
