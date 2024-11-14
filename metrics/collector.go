@@ -27,24 +27,16 @@ func MetricsHandler(root string) http.HandlerFunc {
 }
 
 type Collector struct {
-	root             string
-	mode             cgroups.CGMode
-	memoryAccounting *prometheus.Desc
-	cpuAccounting    *prometheus.Desc
-	memoryQuota      *prometheus.Desc
-	cpuQuota         *prometheus.Desc
-	memoryUsage      *prometheus.Desc
-	cpuUsage         *prometheus.Desc
-	procCPU          *prometheus.Desc
-	procMemory       *prometheus.Desc
-	procCount        *prometheus.Desc
+	root        string
+	mode        cgroups.CGMode
+	memoryUsage *prometheus.Desc
+	cpuUsage    *prometheus.Desc
+	procCPU     *prometheus.Desc
+	procMemory  *prometheus.Desc
+	procCount   *prometheus.Desc
 }
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.memoryAccounting
-	ch <- c.cpuAccounting
-	ch <- c.memoryQuota
-	ch <- c.cpuQuota
 	ch <- c.memoryUsage
 	ch <- c.cpuUsage
 	ch <- c.procCPU
@@ -55,25 +47,16 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	var stats []Metric
 	if c.mode == cgroups.Unified {
-		log.Println("running in unified mode")
-		stats = UnifiedStats(c.root)
+		stats = UnifiedMetrics(c.root)
 	} else if c.mode == cgroups.Legacy {
-		log.Println("running in legacy mode")
-		stats = LegacyStats(c.root)
+		stats = LegacyMetrics(c.root)
 	} else if c.mode == cgroups.Hybrid {
-		log.Println("running in hybrid mode")
-		stats = LegacyStats(c.root)
+		stats = LegacyMetrics(c.root)
 	} else {
 		log.Println("Could not determine cgroup mode")
 	}
 
-	log.Println(stats)
-
 	for _, s := range stats {
-		ch <- prometheus.MustNewConstMetric(c.memoryAccounting, prometheus.GaugeValue, b2f(s.memoryAccounting), s.cgroup, s.username)
-		ch <- prometheus.MustNewConstMetric(c.cpuAccounting, prometheus.GaugeValue, b2f(s.cpuAccounting), s.cgroup, s.username)
-		ch <- prometheus.MustNewConstMetric(c.memoryQuota, prometheus.GaugeValue, float64(s.memoryQuota), s.cgroup, s.username)
-		ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.GaugeValue, float64(s.cpuQuota), s.cgroup, s.username)
 		ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(s.memoryUsage), s.cgroup, s.username)
 		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, s.cpuUsage, s.cgroup, s.username)
 		for name, p := range s.processes {
@@ -90,14 +73,6 @@ func NewCollector(root string) *Collector {
 	return &Collector{
 		root: root,
 		mode: mode,
-		memoryAccounting: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "accounting"),
-			"Whether memory accounting is enabled", labels, nil),
-		cpuAccounting: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "accounting"),
-			"Whether CPU accounting is enabled", labels, nil),
-		memoryQuota: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "quota_bytes"),
-			"Memory Quota in bytes", labels, nil),
-		cpuQuota: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "quota_us_per_s"),
-			"CPU Quota in microseconds per second", labels, nil),
 		memoryUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "usage_bytes"),
 			"Total memory usage in bytes", labels, nil),
 		cpuUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "usage_seconds"),
@@ -118,20 +93,9 @@ type Process struct {
 }
 
 type Metric struct {
-	cgroup           string
-	username         string
-	memoryAccounting bool
-	cpuAccounting    bool
-	memoryQuota      int64
-	cpuQuota         int64
-	memoryUsage      uint64
-	cpuUsage         float64
-	processes        map[string]Process
-}
-
-func b2f(b bool) float64 {
-	if !b {
-		return -1.0
-	}
-	return 1.0
+	cgroup      string
+	username    string
+	memoryUsage uint64
+	cpuUsage    float64
+	processes   map[string]Process
 }

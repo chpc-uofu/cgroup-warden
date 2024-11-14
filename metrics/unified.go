@@ -13,8 +13,8 @@ var lock = sync.RWMutex{}
 
 const USPerS = 1000000 //million
 
-func UnifiedStats(root string) []Metric {
-	var stats []Metric
+func UnifiedMetrics(root string) []Metric {
+	var metrics []Metric
 
 	groupProcs := getUnifiedPids(root)
 	wg := &sync.WaitGroup{}
@@ -25,14 +25,14 @@ func UnifiedStats(root string) []Metric {
 			defer wg.Done()
 			stat := getUnifiedStatistics(group, pids)
 			lock.Lock()
-			stats = append(stats, stat)
+			metrics = append(metrics, stat)
 			lock.Unlock()
 		}(group, pids)
 	}
 
 	wg.Wait()
 
-	return stats
+	return metrics
 }
 
 func getUnifiedPids(cgroup string) map[string]map[uint64]bool {
@@ -53,12 +53,11 @@ func getUnifiedPids(cgroup string) map[string]map[uint64]bool {
 
 	for _, pid := range pids {
 		path, err := cgroup2.PidGroupPath(int(pid))
+		if err != nil {
+			continue
+		}
 		dirs := strings.Split(path, "/")
 		group := strings.Join(dirs[0:3], "/")
-
-		if err != nil {
-			log.Printf("could not determine cgroup path for pid '%d': %s\n", pid, err)
-		}
 
 		groupPids, ok := procs[group]
 		if !ok {

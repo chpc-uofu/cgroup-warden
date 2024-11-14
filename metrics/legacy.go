@@ -1,14 +1,11 @@
 package metrics
 
-import "log"
-
-func LegacyStats(root string) []Metric {
-	var stats []Metric
-	return stats
+func LegacyMetrics(root string) []Metric {
+	var metrics []Metric
+	return metrics
 }
 
 func legacyPids(cgroup string) []uint64 {
 	var pids []uint64
-	log.Println(cgroup)
 	return pids
 }
