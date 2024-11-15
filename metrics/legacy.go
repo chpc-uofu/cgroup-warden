@@ -46,6 +46,8 @@ func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
 func (l *legacy) CreateMetric(group string, pids pidSet) Metric {
 	var metric Metric
 
+	metric.cgroup = group
+
 	manager, err := cgroup1.Load(cgroup1.StaticPath(group), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		log.Printf("could not load cgroup '%s': %s\n", group, err)

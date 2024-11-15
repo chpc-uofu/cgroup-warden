@@ -50,6 +50,8 @@ func (u *unified) GetGroupsWithPIDs() groupPIDMap {
 func (u *unified) CreateMetric(group string, pids pidSet) Metric {
 	var metric Metric
 
+	metric.cgroup = group
+
 	manager, err := cgroup2.Load(group)
 	if err != nil {
 		log.Printf("could not load cgroup '%s': %s\n", group, err)
