@@ -26,13 +26,14 @@ var (
 	lock       = sync.RWMutex{}
 )
 
-// TODO: add meta metrics
 func MetricsHandler(root string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		registry := prometheus.NewRegistry()
 		collector := NewCollector(root)
 		registry.MustRegister(collector)
-		h := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+		gatherers := prometheus.Gatherers{registry}
+		gatherers = append(gatherers, prometheus.DefaultGatherer)
+		h := promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
 		h.ServeHTTP(w, r)
 	}
 }
