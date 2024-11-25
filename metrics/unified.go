@@ -74,5 +74,7 @@ func (u *unified) CreateMetric(group string, pids pidSet) Metric {
 
 	metric.processes = ProcInfo(pids)
 
+	metric.username = lookupUsername(group)
+
 	return metric
 }

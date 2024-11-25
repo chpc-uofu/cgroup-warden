@@ -3,6 +3,8 @@ package metrics
 import (
 	"log"
 	"net/http"
+	"os/user"
+	"regexp"
 	"sync"
 
 	"github.com/containerd/cgroups/v3"
@@ -145,6 +147,9 @@ type Process struct {
 	count  uint64
 }
 
+// Given a set of PIDs, aggregate process count, memory, and
+// CPU usage on the process name associated with the PIDs.
+// Returns a map of process names -> aggregate usage.
 func ProcInfo(pids map[uint64]bool) map[string]Process {
 	processes := make(map[string]Process)
 
@@ -183,4 +188,24 @@ func ProcInfo(pids map[uint64]bool) map[string]Process {
 	}
 
 	return processes
+}
+
+var userSliceRe = regexp.MustCompile(`user-(\d+)\.slice`)
+
+// Looks up the username associated with a user slice cgroup.
+// Slice of the form 'user-1000.slice' or '/user.slice/user-1234.slice'
+// Must be compiled with CGO_ENABLED if used over NFS.
+func lookupUsername(slice string) string {
+	match := userSliceRe.FindStringSubmatch(slice)
+
+	if len(match) < 2 {
+		return "unknown user"
+	}
+
+	user, err := user.LookupId(match[1])
+	if err != nil {
+		return "unknown user"
+	}
+
+	return user.Username
 }
