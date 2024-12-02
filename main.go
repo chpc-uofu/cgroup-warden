@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/chpc-uofu/cgroup-warden/metrics"
 )
 
 type wardenConfig struct {
@@ -64,7 +66,7 @@ func readConfigFromEnvironment() *wardenConfig {
 	conf := &wardenConfig{}
 
 	conf.listen = stringEnvWithDefault("CGROUP_WARDEN_LISTEN_ADDRESS", ":2112")
-	conf.pattern = stringEnvWithDefault("CGROUP_WARDEN_UNIT_PATTERN", "user-*.slice")
+	conf.pattern = stringEnvWithDefault("CGROUP_WARDEN_UNIT_PATTERN", "/user.slice")
 	conf.insecure = boolEnvWithDefault("CGROUP_WARDEN_INSECURE_MODE", false)
 	conf.proc = boolEnvWithDefault("CGROUP_WARDEN_COLLECT_PROCESS_INFO", true)
 
@@ -81,7 +83,7 @@ func main() {
 	conf := readConfigFromEnvironment()
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", MetricsHandler(conf.pattern, conf.proc))
+	mux.Handle("/metrics", metrics.MetricsHandler(conf.pattern))
 	mux.Handle("/", http.NotFoundHandler())
 
 	if conf.insecure {
