@@ -83,7 +83,7 @@ func NewCollector(root string) *Collector {
 	return &Collector{
 		root: root,
 		mode: mode,
-		memoryUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "usage_bytes"),
+		memoryUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "usage_bytes"),
 			"Total memory usage in bytes", labels, nil),
 		cpuUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "usage_seconds"),
 			"Total CPU usage in seconds", labels, nil),
