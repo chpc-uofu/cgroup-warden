@@ -47,21 +47,19 @@ func (u *unified) GetGroupsWithPIDs() groupPIDMap {
 	return pids
 }
 
-func (u *unified) CreateMetric(group string, pids pidSet) Metric {
+func (u *unified) CreateMetric(group string, pids pidSet) *Metric {
 	var metric Metric
-
-	metric.cgroup = group
 
 	manager, err := cgroup2.Load(group)
 	if err != nil {
 		log.Printf("could not load cgroup '%s': %s\n", group, err)
-		return metric
+		return nil
 	}
 
 	stat, err := manager.Stat()
 	if err != nil || stat == nil {
 		log.Printf("could not get stats from cgroup '%s': %s\n", group, err)
-		return metric
+		return nil
 	}
 
 	if stat.CPU != nil {
@@ -74,7 +72,19 @@ func (u *unified) CreateMetric(group string, pids pidSet) Metric {
 
 	metric.processes = ProcInfo(pids)
 
-	metric.username = lookupUsername(group)
+	unit, err := unitName(group)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	metric.unit = unit
 
-	return metric
+	username, err := lookupUsername(group)
+	if err != nil {
+		log.Println(err)
+		return &metric
+	}
+	metric.username = username
+
+	return &metric
 }

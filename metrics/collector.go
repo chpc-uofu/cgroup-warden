@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os/user"
@@ -21,8 +22,8 @@ const (
 
 var (
 	namespace  = "cgroup_warden"
-	labels     = []string{"cgroup", "username"}
-	procLabels = []string{"cgroup", "username", "proc"}
+	labels     = []string{"username", "unit"}
+	procLabels = []string{"username", "unit", "proc"}
 	lock       = sync.RWMutex{}
 )
 
@@ -49,7 +50,7 @@ type Collector struct {
 }
 
 type Metric struct {
-	cgroup      string
+	unit        string
 	username    string
 	memoryUsage uint64
 	cpuUsage    float64
@@ -67,12 +68,12 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	stats := c.CollectMetrics()
 	for _, s := range stats {
-		ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(s.memoryUsage), s.cgroup, s.username)
-		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, s.cpuUsage, s.cgroup, s.username)
+		ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(s.memoryUsage), s.username, s.unit)
+		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, s.cpuUsage, s.username, s.unit)
 		for name, p := range s.processes {
-			ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), s.cgroup, s.username, name)
-			ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), s.cgroup, s.username, name)
-			ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), s.cgroup, s.username, name)
+			ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), s.username, s.unit, name)
+			ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), s.username, s.unit, name)
+			ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), s.username, s.unit, name)
 		}
 	}
 }
@@ -109,7 +110,7 @@ type hierarchy interface {
 	GetGroupsWithPIDs() groupPIDMap
 
 	// creates a metric for the cgroup with the PID information
-	CreateMetric(cgroup string, pids pidSet) Metric
+	CreateMetric(cgroup string, pids pidSet) *Metric
 }
 
 func (c *Collector) CollectMetrics() []Metric {
@@ -131,9 +132,11 @@ func (c *Collector) CollectMetrics() []Metric {
 		go func(group string, procs map[uint64]bool) {
 			defer wg.Done()
 			metric := h.CreateMetric(group, pids)
-			lock.Lock()
-			metrics = append(metrics, metric)
-			lock.Unlock()
+			if metric != nil {
+				lock.Lock()
+				metrics = append(metrics, *metric)
+				lock.Unlock()
+			}
 		}(group, pids)
 	}
 
@@ -191,22 +194,34 @@ func ProcInfo(pids map[uint64]bool) map[string]Process {
 	return processes
 }
 
-var userSliceRe = regexp.MustCompile(`user-(\d+)\.slice`)
+var unitRe = regexp.MustCompile(`(user-\d+\.slice)`)
+
+func unitName(cgroup string) (string, error) {
+	match := unitRe.FindStringSubmatch(cgroup)
+
+	if len(match) < 1 {
+		return "", fmt.Errorf("cannot determine slice from '%s'", cgroup)
+	}
+
+	return match[0], nil
+}
+
+var uidRe = regexp.MustCompile(`user-(\d+)\.slice`)
 
 // Looks up the username associated with a user slice cgroup.
 // Slice of the form 'user-1000.slice' or '/user.slice/user-1234.slice'
 // Must be compiled with CGO_ENABLED if used over NFS.
-func lookupUsername(slice string) string {
-	match := userSliceRe.FindStringSubmatch(slice)
+func lookupUsername(slice string) (string, error) {
+	match := uidRe.FindStringSubmatch(slice)
 
 	if len(match) < 2 {
-		return "unknown user"
+		return "", fmt.Errorf("cannot determine uid from '%s'", slice)
 	}
 
 	user, err := user.LookupId(match[1])
 	if err != nil {
-		return "unknown user"
+		return "", fmt.Errorf("unable to lookup user with id '%s'", match[1])
 	}
 
-	return user.Username
+	return user.Username, nil
 }

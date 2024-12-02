@@ -43,21 +43,19 @@ func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
 	return pids
 }
 
-func (l *legacy) CreateMetric(group string, pids pidSet) Metric {
+func (l *legacy) CreateMetric(group string, pids pidSet) *Metric {
 	var metric Metric
-
-	metric.cgroup = group
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(group), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		log.Printf("could not load cgroup '%s': %s\n", group, err)
-		return metric
+		return nil
 	}
 
 	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
 	if err != nil || stat == nil {
 		log.Printf("could not get stats from cgroup '%s': %s\n", group, err)
-		return metric
+		return nil
 	}
 
 	if stat.CPU != nil {
@@ -70,9 +68,21 @@ func (l *legacy) CreateMetric(group string, pids pidSet) Metric {
 
 	metric.processes = ProcInfo(pids)
 
-	metric.username = lookupUsername(group)
+	unit, err := unitName(group)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	metric.unit = unit
 
-	return metric
+	username, err := lookupUsername(group)
+	if err != nil {
+		log.Println(err)
+		return &metric
+	}
+	metric.username = username
+
+	return &metric
 }
 
 func subsystem() ([]cgroup1.Subsystem, error) {
