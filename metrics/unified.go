@@ -72,12 +72,7 @@ func (u *unified) CreateMetric(group string, pids pidSet) *Metric {
 
 	metric.processes = ProcInfo(pids)
 
-	unit, err := unitName(group)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-	metric.unit = unit
+	metric.cgroup = group
 
 	username, err := lookupUsername(group)
 	if err != nil {

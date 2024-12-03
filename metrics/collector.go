@@ -22,8 +22,8 @@ const (
 
 var (
 	namespace  = "cgroup_warden"
-	labels     = []string{"username", "unit"}
-	procLabels = []string{"username", "unit", "proc"}
+	labels     = []string{"cgroup", "username"}
+	procLabels = []string{"cgroup", "username", "proc"}
 	lock       = sync.RWMutex{}
 )
 
@@ -50,7 +50,7 @@ type Collector struct {
 }
 
 type Metric struct {
-	unit        string
+	cgroup      string
 	username    string
 	memoryUsage uint64
 	cpuUsage    float64
@@ -68,12 +68,12 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	stats := c.CollectMetrics()
 	for _, s := range stats {
-		ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(s.memoryUsage), s.username, s.unit)
-		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, s.cpuUsage, s.username, s.unit)
+		ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(s.memoryUsage), s.cgroup, s.username)
+		ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, s.cpuUsage, s.cgroup, s.username)
 		for name, p := range s.processes {
-			ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), s.username, s.unit, name)
-			ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), s.username, s.unit, name)
-			ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), s.username, s.unit, name)
+			ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), s.cgroup, s.username, name)
+			ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), s.cgroup, s.username, name)
+			ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), s.cgroup, s.username, name)
 		}
 	}
 }
@@ -192,18 +192,6 @@ func ProcInfo(pids map[uint64]bool) map[string]Process {
 	}
 
 	return processes
-}
-
-var unitRe = regexp.MustCompile(`(user-\d+\.slice)`)
-
-func unitName(cgroup string) (string, error) {
-	match := unitRe.FindStringSubmatch(cgroup)
-
-	if len(match) < 1 {
-		return "", fmt.Errorf("cannot determine slice from '%s'", cgroup)
-	}
-
-	return match[0], nil
 }
 
 var uidRe = regexp.MustCompile(`user-(\d+)\.slice`)
