@@ -185,7 +185,7 @@ func ProcInfo(pids map[uint64]bool) map[string]Process {
 		}
 
 		process.cpu = process.cpu + stat.CPUTime()
-		process.memory = process.memory + uint64(stat.RSS)
+		process.memory = process.memory + uint64(stat.ResidentMemory())
 		process.count = process.count + 1
 
 		processes[comm] = process
