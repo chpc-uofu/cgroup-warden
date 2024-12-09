@@ -10,7 +10,7 @@ import (
 )
 
 type wardenConfig struct {
-	pattern  string
+	cgroup   string
 	listen   string
 	cert     string
 	key      string
@@ -66,7 +66,7 @@ func readConfigFromEnvironment() *wardenConfig {
 	conf := &wardenConfig{}
 
 	conf.listen = stringEnvWithDefault("CGROUP_WARDEN_LISTEN_ADDRESS", ":2112")
-	conf.pattern = stringEnvWithDefault("CGROUP_WARDEN_UNIT_PATTERN", "/user.slice")
+	conf.cgroup = stringEnvWithDefault("CGROUP_WARDEN_ROOT_CGROUP", "/user.slice")
 	conf.insecure = boolEnvWithDefault("CGROUP_WARDEN_INSECURE_MODE", false)
 	conf.proc = boolEnvWithDefault("CGROUP_WARDEN_COLLECT_PROCESS_INFO", true)
 
@@ -83,7 +83,7 @@ func main() {
 	conf := readConfigFromEnvironment()
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", metrics.MetricsHandler(conf.pattern))
+	mux.Handle("/metrics", metrics.MetricsHandler(conf.cgroup))
 	mux.Handle("/", http.NotFoundHandler())
 
 	if conf.insecure {
