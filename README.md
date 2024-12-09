@@ -6,8 +6,6 @@
 
 cgroup-warden is a daemon that provides a way to set resource limits on those cgroups. Created to support CHPC's [Arbiter](https://github.com/chpc-uofu/arbiter), but it may also run stand-alone. 
 
-# Installation
-
 ## Aquiring
 
 The code can be obtained via git or a release downloaded [here](https://github.com/CHPC-UofU/cgroup-warden/releases).
