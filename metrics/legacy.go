@@ -66,7 +66,7 @@ func (l *legacy) CreateMetric(group string, pids pidSet) *Metric {
 		metric.memoryUsage = stat.Memory.TotalRSS
 	}
 
-	metric.processes = ProcInfo(pids)
+	metric.processes = ProcInfo(pids, group)
 
 	metric.cgroup = group
 

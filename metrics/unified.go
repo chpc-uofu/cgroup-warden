@@ -70,7 +70,7 @@ func (u *unified) CreateMetric(group string, pids pidSet) *Metric {
 		metric.memoryUsage = stat.Memory.Usage
 	}
 
-	metric.processes = ProcInfo(pids)
+	metric.processes = ProcInfo(pids, group)
 
 	metric.cgroup = group
 

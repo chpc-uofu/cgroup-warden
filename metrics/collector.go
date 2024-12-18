@@ -24,7 +24,8 @@ var (
 	namespace  = "cgroup_warden"
 	labels     = []string{"cgroup", "username"}
 	procLabels = []string{"cgroup", "username", "proc"}
-	lock       = sync.RWMutex{}
+	metricLock = sync.RWMutex{}
+	cacheLock  = sync.RWMutex{}
 )
 
 func MetricsHandler(root string) http.HandlerFunc {
@@ -133,14 +134,20 @@ func (c *Collector) CollectMetrics() []Metric {
 			defer wg.Done()
 			metric := h.CreateMetric(group, pids)
 			if metric != nil {
-				lock.Lock()
+				metricLock.Lock()
 				metrics = append(metrics, *metric)
-				lock.Unlock()
+				metricLock.Unlock()
 			}
 		}(group, pids)
 	}
 
 	wg.Wait()
+
+	for group := range groupCache {
+		if _, found := groupPIDs[group]; !found {
+			delete(groupPIDs, group)
+		}
+	}
 
 	return metrics
 }
@@ -151,16 +158,41 @@ type Process struct {
 	count  uint64
 }
 
+type PIDCacheEntry struct {
+	cpu    float64
+	memory uint64
+}
+
+type PIDCache map[uint64]PIDCacheEntry
+
+type CommandCacheEntry struct {
+	inactiveCPU float64
+	inactiveMem uint64
+	activePIDs  PIDCache
+}
+
+type CommandCache map[string]CommandCacheEntry
+
+var groupCache = make(map[string]CommandCache)
+
 // Given a set of PIDs, aggregate process count, memory, and
 // CPU usage on the process name associated with the PIDs.
 // Returns a map of process names -> aggregate usage.
-func ProcInfo(pids map[uint64]bool) map[string]Process {
+func ProcInfo(pids map[uint64]bool, cgroup string) map[string]Process {
 	processes := make(map[string]Process)
 
 	fs, err := procfs.NewDefaultFS()
 	if err != nil {
 		log.Printf("could not mount procfs: %s\n", err)
 		return processes
+	}
+
+	cacheLock.Lock()
+	commandCache, found := groupCache[cgroup]
+	cacheLock.Unlock()
+
+	if !found {
+		commandCache = make(CommandCache)
 	}
 
 	for pid := range pids {
@@ -179,17 +211,38 @@ func ProcInfo(pids map[uint64]bool) map[string]Process {
 			continue
 		}
 
-		process, ok := processes[comm]
-		if !ok {
-			process = Process{cpu: 0, memory: 0, count: 0}
+		pce := PIDCacheEntry{cpu: stat.CPUTime(), memory: uint64(stat.ResidentMemory())}
+
+		commandCacheEntry, found := commandCache[comm]
+		if !found {
+			commandCacheEntry = CommandCacheEntry{inactiveCPU: 0, inactiveMem: 0, activePIDs: make(PIDCache)}
 		}
 
-		process.cpu = process.cpu + stat.CPUTime()
-		process.memory = process.memory + uint64(stat.ResidentMemory())
-		process.count = process.count + 1
-
-		processes[comm] = process
+		commandCacheEntry.activePIDs[pid] = pce
+		commandCache[comm] = commandCacheEntry
 	}
+
+	for command, commandEntry := range commandCache {
+		var cpu float64
+		var mem uint64
+		for pid, pidEntry := range commandEntry.activePIDs {
+			if _, found := pids[pid]; !found {
+				commandEntry.inactiveCPU += pidEntry.cpu
+				commandEntry.inactiveMem += pidEntry.memory
+				delete(commandEntry.activePIDs, pid)
+			} else {
+				cpu += pidEntry.cpu
+				mem += pidEntry.memory
+			}
+		}
+		p := Process{cpu: cpu + commandEntry.inactiveCPU, memory: mem + commandEntry.inactiveMem, count: uint64(len(commandEntry.activePIDs))}
+		processes[command] = p
+		commandCache[command] = commandEntry
+	}
+
+	cacheLock.Lock()
+	groupCache[cgroup] = commandCache
+	cacheLock.Unlock()
 
 	return processes
 }
