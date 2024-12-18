@@ -211,14 +211,14 @@ func ProcInfo(pids map[uint64]bool, cgroup string) map[string]Process {
 			continue
 		}
 
-		pce := PIDCacheEntry{cpu: stat.CPUTime(), memory: uint64(stat.ResidentMemory())}
+		pidCacheEntry := PIDCacheEntry{cpu: stat.CPUTime(), memory: uint64(stat.ResidentMemory())}
 
 		commandCacheEntry, found := commandCache[comm]
 		if !found {
 			commandCacheEntry = CommandCacheEntry{inactiveCPU: 0, inactiveMem: 0, activePIDs: make(PIDCache)}
 		}
 
-		commandCacheEntry.activePIDs[pid] = pce
+		commandCacheEntry.activePIDs[pid] = pidCacheEntry
 		commandCache[comm] = commandCacheEntry
 	}
 
@@ -237,7 +237,12 @@ func ProcInfo(pids map[uint64]bool, cgroup string) map[string]Process {
 		}
 		p := Process{cpu: cpu + commandEntry.inactiveCPU, memory: mem + commandEntry.inactiveMem, count: uint64(len(commandEntry.activePIDs))}
 		processes[command] = p
-		commandCache[command] = commandEntry
+
+		if len(commandEntry.activePIDs) < 1 {
+			delete(commandCache, command)
+		} else {
+			commandCache[command] = commandEntry
+		}
 	}
 
 	cacheLock.Lock()
