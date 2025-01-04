@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -43,41 +44,34 @@ func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
 	return pids
 }
 
-func (l *legacy) CreateMetric(group string, pids pidSet) *Metric {
-	var metric Metric
+func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
+	var info cgroupInfo
 
-	manager, err := cgroup1.Load(cgroup1.StaticPath(group), cgroup1.WithHierarchy(subsystem))
+	manager, err := cgroup1.Load(cgroup1.StaticPath(cg), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
-		log.Printf("could not load cgroup '%s': %s\n", group, err)
-		return nil
+		return info, fmt.Errorf("could not load cgroup '%s': %s", cg, err)
 	}
 
 	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
 	if err != nil || stat == nil {
-		log.Printf("could not get stats from cgroup '%s': %s\n", group, err)
-		return nil
+		return info, fmt.Errorf("could not get stats from cgroup '%s': %s", cg, err)
 	}
 
 	if stat.CPU != nil {
-		metric.cpuUsage = float64(stat.CPU.Usage.Total) / NSPerS
+		info.cpuUsage = float64(stat.CPU.Usage.Total) / NSPerS
 	}
 
 	if stat.Memory != nil {
-		metric.memoryUsage = stat.Memory.TotalRSS
+		info.memoryUsage = stat.Memory.TotalRSS
 	}
 
-	metric.processes = ProcInfo(pids, group)
-
-	metric.cgroup = group
-
-	username, err := lookupUsername(group)
+	username, err := lookupUsername(cg)
 	if err != nil {
-		log.Println(err)
-		return &metric
+		return info, fmt.Errorf("could not lookup username for cgroup '%s': %s", cg, err)
 	}
-	metric.username = username
 
-	return &metric
+	info.username = username
+	return info, nil
 }
 
 func subsystem() ([]cgroup1.Subsystem, error) {

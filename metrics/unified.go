@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -47,39 +48,32 @@ func (u *unified) GetGroupsWithPIDs() groupPIDMap {
 	return pids
 }
 
-func (u *unified) CreateMetric(group string, pids pidSet) *Metric {
-	var metric Metric
+func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
+	var info cgroupInfo
 
-	manager, err := cgroup2.Load(group)
+	manager, err := cgroup2.Load(cg)
 	if err != nil {
-		log.Printf("could not load cgroup '%s': %s\n", group, err)
-		return nil
+		return info, fmt.Errorf("could not load cgroup '%s': %s", cg, err)
 	}
 
 	stat, err := manager.Stat()
-	if err != nil || stat == nil {
-		log.Printf("could not get stats from cgroup '%s': %s\n", group, err)
-		return nil
+	if err != nil {
+		return info, fmt.Errorf("could not load stats from cgroup '%s': %s", cg, err)
 	}
 
 	if stat.CPU != nil {
-		metric.cpuUsage = float64(stat.CPU.UsageUsec) / USPerS
+		info.cpuUsage = float64(stat.CPU.UsageUsec) / USPerS
 	}
 
 	if stat.Memory != nil {
-		metric.memoryUsage = stat.Memory.Usage
+		info.memoryUsage = stat.Memory.Usage
 	}
 
-	metric.processes = ProcInfo(pids, group)
-
-	metric.cgroup = group
-
-	username, err := lookupUsername(group)
+	username, err := lookupUsername(cg)
 	if err != nil {
-		log.Println(err)
-		return &metric
+		return info, fmt.Errorf("could not lookup username for cgroup '%s': %s", cg, err)
 	}
-	metric.username = username
 
-	return &metric
+	info.username = username
+	return info, nil
 }
