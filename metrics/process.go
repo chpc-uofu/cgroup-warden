@@ -112,6 +112,7 @@ func reconcileCPU(cg string, processes map[string]Process) {
 		last := entry.lastSeen[name]
 
 		if process.cpu < last {
+			log.Printf("Reconciling CPU: (%v) %v < %v\n", name, process.cpu, last)
 			process.cpu = last
 			processes[name] = process
 		}
