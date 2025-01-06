@@ -12,9 +12,9 @@ type unified struct {
 	root string
 }
 
-func (u *unified) GetGroupsWithPIDs() groupPIDMap {
+func (u *unified) GetGroupsWithPIDs() map[string]map[uint64]bool {
 
-	var pids = make(groupPIDMap)
+	var pids = make(map[string]map[uint64]bool)
 
 	manager, err := cgroup2.Load(u.root)
 	if err != nil {
@@ -38,7 +38,7 @@ func (u *unified) GetGroupsWithPIDs() groupPIDMap {
 
 		groupPids, ok := pids[group]
 		if !ok {
-			groupPids = make(pidSet)
+			groupPids = make(map[uint64]bool)
 		}
 		groupPids[p] = true
 

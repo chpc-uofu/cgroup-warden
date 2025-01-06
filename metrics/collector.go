@@ -76,7 +76,10 @@ func (c *Collector) Hierarchy() hierarchy {
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	h := c.Hierarchy()
 	wg := sync.WaitGroup{}
-	for cg, pids := range h.GetGroupsWithPIDs() {
+	groups := h.GetGroupsWithPIDs()
+	currentCGroups := make(map[string]bool)
+	for cg, pids := range groups {
+		currentCGroups[cg] = true
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -89,7 +92,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(info.memoryUsage), cg, info.username)
 			ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, info.cpuUsage, cg, info.username)
 
-			for name, p := range ProcessInfo(pids) {
+			for name, p := range ProcessInfo(cg, pids) {
 				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), cg, info.username, name)
@@ -97,6 +100,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		}()
 	}
 	wg.Wait()
+	Tidy(currentCGroups)
 }
 
 func NewCollector(root string) *Collector {
@@ -117,12 +121,8 @@ func NewCollector(root string) *Collector {
 	}
 }
 
-type pidSet map[uint64]bool
-
-type groupPIDMap map[string]pidSet
-
 type hierarchy interface {
-	GetGroupsWithPIDs() groupPIDMap
+	GetGroupsWithPIDs() map[string]map[uint64]bool
 	CGroupInfo(cg string) (cgroupInfo, error)
 }
 

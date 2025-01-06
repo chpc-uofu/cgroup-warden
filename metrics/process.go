@@ -13,24 +13,51 @@ type Process struct {
 	count  uint64
 }
 
-type CacheEntry struct {
-	inactiveCPU float64
-	activePIDS  map[float64]bool
+type cacheEntry struct {
+	lastSeen map[string]float64
 }
 
-type ProcessCache struct {
-	cache map[string]CacheEntry
-	lock  sync.Mutex
-}
-
-func NewProcessCache() *ProcessCache {
-	return &ProcessCache{
-		cache: make(map[string]CacheEntry),
-		lock:  sync.Mutex{},
+func newCacheEntry() cacheEntry {
+	return cacheEntry{
+		lastSeen: make(map[string]float64),
 	}
 }
 
-func ProcessInfo(pids map[uint64]bool) map[string]Process {
+type processCache struct {
+	cache map[string]cacheEntry
+	lock  *sync.Mutex
+}
+
+func (pc processCache) Get(cg string) cacheEntry {
+	defer pc.lock.Unlock()
+	pc.lock.Lock()
+	entry, ok := pc.cache[cg]
+	if !ok {
+		entry = newCacheEntry()
+	}
+	return entry
+}
+
+func (pc processCache) tidy(currentGroupNames map[string]bool) {
+	defer pc.lock.Unlock()
+	pc.lock.Lock()
+
+	for name := range pc.cache {
+		_, found := currentGroupNames[name]
+		if !found {
+			delete(pc.cache, name)
+		}
+	}
+}
+
+func newProcessCache() processCache {
+	return processCache{
+		cache: make(map[string]cacheEntry),
+		lock:  &sync.Mutex{},
+	}
+}
+
+func ProcessInfo(cg string, pids map[uint64]bool) map[string]Process {
 	processes := make(map[string]Process)
 
 	fs, err := procfs.NewDefaultFS()
@@ -67,5 +94,35 @@ func ProcessInfo(pids map[uint64]bool) map[string]Process {
 		processes[comm] = p
 	}
 
+	reconcileCPU(cg, processes)
+
 	return processes
+}
+
+var cache = newProcessCache()
+
+func Tidy(currentCGNames map[string]bool) {
+	cache.tidy(currentCGNames)
+}
+
+func reconcileCPU(cg string, processes map[string]Process) {
+	entry := cache.Get(cg)
+	for name, process := range processes {
+
+		last := entry.lastSeen[name]
+
+		if process.cpu < last {
+			process.cpu = last
+			processes[name] = process
+		}
+
+		entry.lastSeen[name] = process.cpu
+	}
+
+	for name := range entry.lastSeen {
+		_, found := processes[name]
+		if !found {
+			delete(entry.lastSeen, name)
+		}
+	}
 }

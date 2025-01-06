@@ -12,9 +12,9 @@ type legacy struct {
 	root string
 }
 
-func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
+func (l *legacy) GetGroupsWithPIDs() map[string]map[uint64]bool {
 
-	var pids = make(groupPIDMap)
+	var pids = make(map[string]map[uint64]bool)
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(l.root), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
@@ -34,7 +34,7 @@ func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
 
 		groupPids, ok := pids[group]
 		if !ok {
-			groupPids = make(pidSet)
+			groupPids = make(map[uint64]bool)
 		}
 		groupPids[uint64(p.Pid)] = true
 
