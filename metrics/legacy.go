@@ -1,8 +1,6 @@
 package metrics
 
 import (
-	"fmt"
-	"log"
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup1"
@@ -12,20 +10,18 @@ type legacy struct {
 	root string
 }
 
-func (l *legacy) GetGroupsWithPIDs() map[string]map[uint64]bool {
+func (l *legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 
 	var pids = make(map[string]map[uint64]bool)
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(l.root), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
-		log.Printf("could not load cgroup '%s': %s\n", l.root, err.Error())
-		return pids
+		return nil, err
 	}
 
 	procs, err := manager.Processes(cgroup1.Cpuacct, true)
 	if err != nil {
-		log.Printf("could not load cgroup '%s' processes: %s\n", l.root, err.Error())
-		return pids
+		return nil, err
 	}
 
 	for _, p := range procs {
@@ -41,7 +37,7 @@ func (l *legacy) GetGroupsWithPIDs() map[string]map[uint64]bool {
 		pids[group] = groupPids
 	}
 
-	return pids
+	return pids, nil
 }
 
 func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
@@ -49,12 +45,12 @@ func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cg), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
-		return info, fmt.Errorf("could not load cgroup '%s': %s", cg, err)
+		return info, err
 	}
 
 	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
 	if err != nil || stat == nil {
-		return info, fmt.Errorf("could not get stats from cgroup '%s': %s", cg, err)
+		return info, err
 	}
 
 	if stat.CPU != nil {
@@ -67,7 +63,7 @@ func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
 
 	username, err := lookupUsername(cg)
 	if err != nil {
-		return info, fmt.Errorf("could not lookup username for cgroup '%s': %s", cg, err)
+		return info, err
 	}
 
 	info.username = username

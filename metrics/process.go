@@ -1,7 +1,7 @@
 package metrics
 
 import (
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/prometheus/procfs"
@@ -64,13 +64,12 @@ func CleanProcessCache(active map[string]bool) {
 
 var cache = newProcessCache()
 
-func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcessAggregation {
+func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation, error) {
 	results := make(map[string]ProcessAggregation)
 
 	fs, err := procfs.NewDefaultFS()
 	if err != nil {
-		log.Printf("could not mount procfs: %s\n", err)
-		return results
+		return nil, err
 	}
 
 	activeCommands := make(map[string]bool)
@@ -81,16 +80,19 @@ func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcessAggregation 
 
 		proc, err := fs.Proc(int(pid))
 		if err != nil {
+			slog.Info("unable to load process", "pid", pid, "err", err)
 			continue
 		}
 
 		command, err := proc.Comm()
 		if err != nil {
+			slog.Info("unable to determine process command", "pid", pid, "err", err)
 			continue
 		}
 
 		stat, err := proc.Stat()
 		if err != nil {
+			slog.Info("unable to read process statistics", "pid", pid, "err", err)
 			continue
 		}
 
@@ -110,6 +112,7 @@ func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcessAggregation 
 	for pid, process := range cacheEntry {
 
 		if _, ok := activeCommands[process.command]; !ok {
+			slog.Debug("removing pid from cache entry", "cgroup", cg, "pid", pid, "command", process.command)
 			delete(cacheEntry, pid)
 			continue
 		}
@@ -128,5 +131,5 @@ func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcessAggregation 
 
 	cache.put(cg, cacheEntry)
 
-	return results
+	return results, nil
 }

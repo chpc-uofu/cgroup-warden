@@ -2,7 +2,7 @@ package metrics
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os/user"
 	"regexp"
@@ -77,8 +77,14 @@ func (c *Collector) newHierarchy() hierarchy {
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	h := c.newHierarchy()
+
+	groups, err := h.GetGroupsWithPIDs()
+	if err != nil {
+		slog.Error("could not collect cgroups with pids", "err", err)
+		return
+	}
+
 	wg := sync.WaitGroup{}
-	groups := h.GetGroupsWithPIDs()
 	active := make(map[string]bool)
 	for cg, pids := range groups {
 		active[cg] = true
@@ -88,13 +94,20 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 			info, err := h.CGroupInfo(cg)
 			if err != nil {
-				log.Print(err)
+				slog.Warn("unable to collect group info", "cgroup", cg, "err", err)
 				return
 			}
+
 			ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(info.memoryUsage), cg, info.username)
 			ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, info.cpuUsage, cg, info.username)
 
-			for name, p := range ProcessInfo(cg, pids) {
+			procs, err := ProcessInfo(cg, pids)
+			if err != nil {
+				slog.Warn("unable to collect process info", "cgroup", cg, "err", err)
+				return
+			}
+
+			for name, p := range procs {
 				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpuSecondsTotal), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memoryBytesTotal), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), cg, info.username, name)
@@ -124,7 +137,7 @@ func NewCollector(root string) *Collector {
 }
 
 type hierarchy interface {
-	GetGroupsWithPIDs() map[string]map[uint64]bool
+	GetGroupsWithPIDs() (map[string]map[uint64]bool, error)
 	CGroupInfo(cg string) (cgroupInfo, error)
 }
 

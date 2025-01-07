@@ -51,6 +51,7 @@ The following flags are passed as environment variables
 `CGROUP_WARDEN_PRIVATE_KEY`: Path to TLS private key. Required if running in secure mode.  
 `CGROUP_WARDEN_BEARER_TOKEN` : Bearer token to use for authentication. Required if running in secure mode.
 `CGROUP_WARDEN_META_METRICS` : Whether to export metrics regarding the running warden itself. Defaults to `true`.
+`CGROUP_WARDEN_LOG_LEVEL` : Level at which to log messages. Choices are `debug`, `info`, `warning`, and `error`. Defaults to `info`.
 
 When passing these to a systemd service, you can put them into an environment file like
 ```shell
