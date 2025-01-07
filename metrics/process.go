@@ -7,33 +7,84 @@ import (
 	"github.com/prometheus/procfs"
 )
 
-type ProcInfo struct {
-	cpu    float64
-	memory uint64
-	count  uint64
+type process struct {
+	cpuSeconds  float64
+	memoryBytes uint64
+	command     string
+	current     bool
 }
 
-// ProcessInfo provides the aggregates the count, CPU, and memory usage of a
-// process running in a cgroup. cg is the name of the cgroup, and pids is a
-// set of PIDs running in that cgroup. This function will look up each pid
-// in /procfs, and combine the results based on the process name. Returns
-// a map of process name to a ProcInfo.
-func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcInfo {
-	processes := make(map[string]ProcInfo)
+type ProcessAggregation struct {
+	cpuSecondsTotal  float64
+	memoryBytesTotal uint64
+	count            uint64
+}
+
+type processCache struct {
+	data  map[string]map[uint64]process
+	mutex sync.Mutex
+}
+
+func newProcessCache() *processCache {
+	return &processCache{
+		data:  make(map[string]map[uint64]process),
+		mutex: sync.Mutex{},
+	}
+}
+
+func (pc *processCache) get(cgroup string) map[uint64]process {
+	defer pc.mutex.Unlock()
+	pc.mutex.Lock()
+	value, ok := pc.data[cgroup]
+	if !ok {
+		value = make(map[uint64]process)
+	}
+	return value
+}
+
+func (pc *processCache) put(cgroup string, processes map[uint64]process) {
+	defer pc.mutex.Unlock()
+	pc.mutex.Lock()
+	pc.data[cgroup] = processes
+}
+
+func (pc *processCache) clean(active map[string]bool) {
+	defer pc.mutex.Unlock()
+	pc.mutex.Lock()
+	for cgroup := range pc.data {
+		if _, ok := active[cgroup]; !ok {
+			delete(pc.data, cgroup)
+		}
+	}
+}
+
+func CleanProcessCache(active map[string]bool) {
+	cache.clean(active)
+}
+
+var cache = newProcessCache()
+
+func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcessAggregation {
+	results := make(map[string]ProcessAggregation)
 
 	fs, err := procfs.NewDefaultFS()
 	if err != nil {
 		log.Printf("could not mount procfs: %s\n", err)
-		return processes
+		return results
 	}
 
+	activeCommands := make(map[string]bool)
+
+	cacheEntry := cache.get(cg)
+
 	for pid := range pids {
+
 		proc, err := fs.Proc(int(pid))
 		if err != nil {
 			continue
 		}
 
-		comm, err := proc.Comm()
+		command, err := proc.Comm()
 		if err != nil {
 			continue
 		}
@@ -43,125 +94,39 @@ func ProcessInfo(cg string, pids map[uint64]bool) map[string]ProcInfo {
 			continue
 		}
 
-		p, ok := processes[comm]
-		if !ok {
-			p = ProcInfo{}
+		process := process{
+			cpuSeconds:  stat.CPUTime(),
+			memoryBytes: uint64(stat.ResidentMemory()),
+			command:     command,
+			current:     true,
 		}
 
-		p.cpu += stat.CPUTime()
-		p.memory += uint64(stat.ResidentMemory())
-		p.count += 1
+		activeCommands[command] = true
 
-		processes[comm] = p
+		cacheEntry[pid] = process
+
 	}
 
-	reconcileCPU(cg, processes)
+	for pid, process := range cacheEntry {
 
-	return processes
-}
-
-// An entry in the processCache.
-type cacheEntry struct {
-	lastSeen map[string]float64
-}
-
-// creats a new cacheEntry.
-func newCacheEntry() cacheEntry {
-	return cacheEntry{
-		lastSeen: make(map[string]float64),
-	}
-}
-
-// Cache used to store process CPU information. Mutex used for conurrent safety.
-type processCache struct {
-	cache map[string]cacheEntry
-	lock  *sync.Mutex
-}
-
-// Retrieves the cacheEntry mapped to the key cg from this processCache.
-// If no element exists, return the default cacheEntry. Concurrent safe.
-func (pc processCache) Get(cg string) cacheEntry {
-	defer pc.lock.Unlock()
-	pc.lock.Lock()
-	entry, ok := pc.cache[cg]
-	if !ok {
-		entry = newCacheEntry()
-	}
-	return entry
-}
-
-// Updates this processCache. Concurrent safe.
-func (pc processCache) Put(cg string, entry cacheEntry) {
-	defer pc.lock.Unlock()
-	pc.lock.Lock()
-	pc.cache[cg] = entry
-}
-
-// Cleans up this processCache, removing all entries not contained
-// in currentGroupNames.
-func (pc processCache) tidy(currentGroupNames map[string]bool) {
-	defer pc.lock.Unlock()
-	pc.lock.Lock()
-
-	for name := range pc.cache {
-		_, found := currentGroupNames[name]
-		if !found {
-			delete(pc.cache, name)
-		}
-	}
-}
-
-// Creates a new processCache struct.
-func newProcessCache() processCache {
-	return processCache{
-		cache: make(map[string]cacheEntry),
-		lock:  &sync.Mutex{},
-	}
-}
-
-// The global cache used to ensure the CPU process counter performs as one.
-var cache = newProcessCache()
-
-// Tidy cleans up the global process cache by removing all data
-// that refers to inactive cgroups. currentCGNames is a set of
-// cgroup names that are currently active.
-func Tidy(currentCGNames map[string]bool) {
-	cache.tidy(currentCGNames)
-}
-
-// reconcileCPU ensures that the aggregate CPU usage per process
-// is not lower than the last collected aggregate. This can happen
-// if multiple instances of the same process are running and one
-// stops. The process CPU metric is a counter, so if this happens
-// we retain the last value.
-//
-// cg is the name of the cgroup, used for indexing into the cache,
-// and processes is a map of process names to a ProcIfno. If the CPU
-// value needs to be updated, this change is reflected in process.
-//
-// A global cache is maintained, and must
-// be cleaned up with Tidy.
-func reconcileCPU(cg string, processes map[string]ProcInfo) {
-	entry := cache.Get(cg)
-
-	for name, process := range processes {
-
-		last := entry.lastSeen[name]
-
-		if process.cpu < last {
-			process.cpu = last
-			processes[name] = process
+		if _, ok := activeCommands[process.command]; !ok {
+			delete(cacheEntry, pid)
+			continue
 		}
 
-		entry.lastSeen[name] = process.cpu
-	}
-
-	for name := range entry.lastSeen {
-		_, found := processes[name]
-		if !found {
-			delete(entry.lastSeen, name)
+		agg := results[process.command]
+		agg.cpuSecondsTotal += process.cpuSeconds
+		if process.current {
+			agg.memoryBytesTotal += process.memoryBytes
+			agg.count += 1
 		}
+		results[process.command] = agg
+
+		process.current = false
+		cacheEntry[pid] = process
 	}
 
-	cache.Put(cg, entry)
+	cache.put(cg, cacheEntry)
+
+	return results
 }

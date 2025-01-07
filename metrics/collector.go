@@ -25,13 +25,15 @@ var (
 	procLabels = []string{"cgroup", "username", "proc"}
 )
 
-func MetricsHandler(root string) http.HandlerFunc {
+func MetricsHandler(root string, meta bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		registry := prometheus.NewRegistry()
 		collector := NewCollector(root)
 		registry.MustRegister(collector)
 		gatherers := prometheus.Gatherers{registry}
-		gatherers = append(gatherers, prometheus.DefaultGatherer)
+		if meta {
+			gatherers = append(gatherers, prometheus.DefaultGatherer)
+		}
 		h := promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
 		h.ServeHTTP(w, r)
 	}
@@ -61,7 +63,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.procCount
 }
 
-func (c *Collector) Hierarchy() hierarchy {
+func (c *Collector) newHierarchy() hierarchy {
 	var h hierarchy
 
 	if c.mode == cgroups.Unified {
@@ -74,12 +76,12 @@ func (c *Collector) Hierarchy() hierarchy {
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	h := c.Hierarchy()
+	h := c.newHierarchy()
 	wg := sync.WaitGroup{}
 	groups := h.GetGroupsWithPIDs()
-	currentCGroups := make(map[string]bool)
+	active := make(map[string]bool)
 	for cg, pids := range groups {
-		currentCGroups[cg] = true
+		active[cg] = true
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -93,14 +95,14 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, info.cpuUsage, cg, info.username)
 
 			for name, p := range ProcessInfo(cg, pids) {
-				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), cg, info.username, name)
-				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memory), cg, info.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpuSecondsTotal), cg, info.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memoryBytesTotal), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), cg, info.username, name)
 			}
 		}()
 	}
 	wg.Wait()
-	Tidy(currentCGroups)
+	CleanProcessCache(active)
 }
 
 func NewCollector(root string) *Collector {

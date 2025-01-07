@@ -17,6 +17,7 @@ type wardenConfig struct {
 	bearer   string
 	insecure bool
 	proc     bool
+	meta     bool
 }
 
 func authorize(next http.Handler, secret string) http.Handler {
@@ -69,6 +70,7 @@ func readConfigFromEnvironment() *wardenConfig {
 	conf.cgroup = stringEnvWithDefault("CGROUP_WARDEN_ROOT_CGROUP", "/user.slice")
 	conf.insecure = boolEnvWithDefault("CGROUP_WARDEN_INSECURE_MODE", false)
 	conf.proc = boolEnvWithDefault("CGROUP_WARDEN_COLLECT_PROCESS_INFO", true)
+	conf.meta = boolEnvWithDefault("CGROUP_WARDEN_META_METRICS", true)
 
 	if !conf.insecure {
 		conf.cert = stringEnvRequired("CGROUP_WARDEN_CERTIFICATE")
@@ -83,7 +85,7 @@ func main() {
 	conf := readConfigFromEnvironment()
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", metrics.MetricsHandler(conf.cgroup))
+	mux.Handle("/metrics", metrics.MetricsHandler(conf.cgroup, conf.meta))
 	mux.Handle("/", http.NotFoundHandler())
 
 	if conf.insecure {
