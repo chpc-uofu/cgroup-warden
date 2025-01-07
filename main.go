@@ -45,7 +45,7 @@ func stringEnvRequired(flag string) string {
 func stringEnvWithDefault(flag string, value string) string {
 	s, set := os.LookupEnv(flag)
 	if !set {
-		slog.Info("flag not set, using default", "flag", flag, "default", value)
+		slog.Info("flag not set, using default", flag, value)
 		return value
 	} else {
 		return s
@@ -55,12 +55,12 @@ func stringEnvWithDefault(flag string, value string) string {
 func boolEnvWithDefault(flag string, value bool) bool {
 	s, set := os.LookupEnv(flag)
 	if !set {
-		slog.Info("flag not set, using default", "flag", flag, "default", value)
+		slog.Info("flag not set, using default", flag, value)
 		return value
 	} else {
 		b, err := strconv.ParseBool(s)
 		if err != nil {
-			slog.Error("invalid value", "flag", flag, "type", "bool")
+			slog.Error("invalid value", flag, value, "type", "bool")
 		}
 		return b
 	}
