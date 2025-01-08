@@ -60,7 +60,7 @@ func boolEnvWithDefault(flag string, value bool) bool {
 	} else {
 		b, err := strconv.ParseBool(s)
 		if err != nil {
-			slog.Error("invalid value", flag, value, "type", "bool")
+			slog.Error("invalid value", "flag", flag, "type", "bool")
 		}
 		return b
 	}

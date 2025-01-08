@@ -45,7 +45,8 @@ type Collector struct {
 	memoryUsage *prometheus.Desc
 	cpuUsage    *prometheus.Desc
 	procCPU     *prometheus.Desc
-	procMemory  *prometheus.Desc
+	procRSS     *prometheus.Desc
+	procPSS     *prometheus.Desc
 	procCount   *prometheus.Desc
 }
 
@@ -59,7 +60,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.memoryUsage
 	ch <- c.cpuUsage
 	ch <- c.procCPU
-	ch <- c.procMemory
+	ch <- c.procRSS
+	ch <- c.procPSS
 	ch <- c.procCount
 }
 
@@ -108,8 +110,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			}
 
 			for name, p := range procs {
-				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpuSecondsTotal), cg, info.username, name)
-				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memoryBytesTotal), cg, info.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpu), cg, info.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procRSS, prometheus.GaugeValue, float64(p.memoryRSS), cg, info.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procPSS, prometheus.GaugeValue, float64(p.memoryPSS), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), cg, info.username, name)
 			}
 		}()
@@ -129,7 +132,9 @@ func NewCollector(root string) *Collector {
 			"Total CPU usage in seconds", labels, nil),
 		procCPU: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "cpu_usage_seconds"),
 			"Aggregate CPU usage for this process in seconds", procLabels, nil),
-		procMemory: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_usage_bytes"),
+		procRSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_rss_bytes"),
+			"Aggregate memory usage for this process", procLabels, nil),
+		procPSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_pss_bytes"),
 			"Aggregate memory usage for this process", procLabels, nil),
 		procCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "count"),
 			"Instance count of this process", procLabels, nil),

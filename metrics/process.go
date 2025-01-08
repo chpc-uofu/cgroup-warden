@@ -8,16 +8,18 @@ import (
 )
 
 type process struct {
-	cpuSeconds  float64
-	memoryBytes uint64
-	command     string
-	current     bool
+	cpu       float64
+	memoryRSS uint64
+	memoryPSS uint64
+	command   string
+	current   bool
 }
 
 type ProcessAggregation struct {
-	cpuSecondsTotal  float64
-	memoryBytesTotal uint64
-	count            uint64
+	cpu       float64
+	memoryRSS uint64
+	memoryPSS uint64
+	count     uint64
 }
 
 type processCache struct {
@@ -96,11 +98,18 @@ func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation
 			continue
 		}
 
+		rollup, err := proc.ProcSMapsRollup()
+		if err != nil {
+			slog.Info("unable to read process smap rollup", "pid", pid, "err", err)
+			continue
+		}
+
 		process := process{
-			cpuSeconds:  stat.CPUTime(),
-			memoryBytes: uint64(stat.ResidentMemory()),
-			command:     command,
-			current:     true,
+			cpu:       stat.CPUTime(),
+			memoryRSS: uint64(rollup.Rss),
+			memoryPSS: uint64(rollup.Pss),
+			command:   command,
+			current:   true,
 		}
 
 		activeCommands[command] = true
@@ -118,9 +127,10 @@ func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation
 		}
 
 		agg := results[process.command]
-		agg.cpuSecondsTotal += process.cpuSeconds
+		agg.cpu += process.cpu
 		if process.current {
-			agg.memoryBytesTotal += process.memoryBytes
+			agg.memoryRSS += process.memoryRSS
+			agg.memoryPSS += process.memoryPSS
 			agg.count += 1
 		}
 		results[process.command] = agg
