@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"log"
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup1"
@@ -11,20 +10,18 @@ type legacy struct {
 	root string
 }
 
-func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
+func (l *legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 
-	var pids = make(groupPIDMap)
+	var pids = make(map[string]map[uint64]bool)
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(l.root), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
-		log.Printf("could not load cgroup '%s': %s\n", l.root, err.Error())
-		return pids
+		return nil, err
 	}
 
 	procs, err := manager.Processes(cgroup1.Cpuacct, true)
 	if err != nil {
-		log.Printf("could not load cgroup '%s' processes: %s\n", l.root, err.Error())
-		return pids
+		return nil, err
 	}
 
 	for _, p := range procs {
@@ -33,51 +30,44 @@ func (l *legacy) GetGroupsWithPIDs() groupPIDMap {
 
 		groupPids, ok := pids[group]
 		if !ok {
-			groupPids = make(pidSet)
+			groupPids = make(map[uint64]bool)
 		}
 		groupPids[uint64(p.Pid)] = true
 
 		pids[group] = groupPids
 	}
 
-	return pids
+	return pids, nil
 }
 
-func (l *legacy) CreateMetric(group string, pids pidSet) *Metric {
-	var metric Metric
+func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
+	var info cgroupInfo
 
-	manager, err := cgroup1.Load(cgroup1.StaticPath(group), cgroup1.WithHierarchy(subsystem))
+	manager, err := cgroup1.Load(cgroup1.StaticPath(cg), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
-		log.Printf("could not load cgroup '%s': %s\n", group, err)
-		return nil
+		return info, err
 	}
 
 	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
 	if err != nil || stat == nil {
-		log.Printf("could not get stats from cgroup '%s': %s\n", group, err)
-		return nil
+		return info, err
 	}
 
 	if stat.CPU != nil {
-		metric.cpuUsage = float64(stat.CPU.Usage.Total) / NSPerS
+		info.cpuUsage = float64(stat.CPU.Usage.Total) / NSPerS
 	}
 
 	if stat.Memory != nil {
-		metric.memoryUsage = stat.Memory.TotalRSS
+		info.memoryUsage = stat.Memory.TotalRSS
 	}
 
-	metric.processes = ProcInfo(pids)
-
-	metric.cgroup = group
-
-	username, err := lookupUsername(group)
+	username, err := lookupUsername(cg)
 	if err != nil {
-		log.Println(err)
-		return &metric
+		return info, err
 	}
-	metric.username = username
 
-	return &metric
+	info.username = username
+	return info, nil
 }
 
 func subsystem() ([]cgroup1.Subsystem, error) {
