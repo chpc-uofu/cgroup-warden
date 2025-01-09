@@ -58,7 +58,7 @@ func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
 	}
 
 	if stat.Memory != nil {
-		info.memoryUsage = stat.Memory.TotalRSS
+		info.memoryRSS = stat.Memory.TotalRSS
 	}
 
 	username, err := lookupUsername(cg)

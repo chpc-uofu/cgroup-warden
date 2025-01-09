@@ -64,7 +64,7 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 	}
 
 	if stat.Memory != nil {
-		info.memoryUsage = stat.Memory.Usage
+		info.memoryRSS = stat.Memory.Usage
 	}
 
 	username, err := lookupUsername(cg)

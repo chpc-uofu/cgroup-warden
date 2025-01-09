@@ -40,24 +40,27 @@ func MetricsHandler(root string, meta bool) http.HandlerFunc {
 }
 
 type Collector struct {
-	root        string
-	mode        cgroups.CGMode
-	memoryUsage *prometheus.Desc
-	cpuUsage    *prometheus.Desc
-	procCPU     *prometheus.Desc
-	procRSS     *prometheus.Desc
-	procPSS     *prometheus.Desc
-	procCount   *prometheus.Desc
+	root      string
+	mode      cgroups.CGMode
+	memoryRSS *prometheus.Desc
+	memoryPSS *prometheus.Desc
+	cpuUsage  *prometheus.Desc
+	procCPU   *prometheus.Desc
+	procRSS   *prometheus.Desc
+	procPSS   *prometheus.Desc
+	procCount *prometheus.Desc
 }
 
 type cgroupInfo struct {
-	username    string
-	memoryUsage uint64
-	cpuUsage    float64
+	username  string
+	memoryRSS uint64
+	memoryPSS uint64
+	cpuUsage  float64
 }
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.memoryUsage
+	ch <- c.memoryRSS
+	ch <- c.memoryPSS
 	ch <- c.cpuUsage
 	ch <- c.procCPU
 	ch <- c.procRSS
@@ -100,7 +103,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				return
 			}
 
-			ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(info.memoryUsage), cg, info.username)
+			ch <- prometheus.MustNewConstMetric(c.memoryRSS, prometheus.GaugeValue, float64(info.memoryRSS), cg, info.username)
+			ch <- prometheus.MustNewConstMetric(c.memoryPSS, prometheus.GaugeValue, float64(info.memoryPSS), cg, info.username)
 			ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, info.cpuUsage, cg, info.username)
 
 			procs, err := ProcessInfo(cg, pids)
@@ -126,16 +130,18 @@ func NewCollector(root string) *Collector {
 	return &Collector{
 		root: root,
 		mode: mode,
-		memoryUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "usage_bytes"),
-			"Total memory usage in bytes", labels, nil),
+		memoryRSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "rss_bytes"),
+			"Total resident shared size (RSS) in bytes", labels, nil),
+		memoryPSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "pss_bytes"),
+			"Total proportional shared size (PSS) in bytes", labels, nil),
 		cpuUsage: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "usage_seconds"),
 			"Total CPU usage in seconds", labels, nil),
 		procCPU: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "cpu_usage_seconds"),
 			"Aggregate CPU usage for this process in seconds", procLabels, nil),
 		procRSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_rss_bytes"),
-			"Aggregate memory usage for this process", procLabels, nil),
+			"Aggregate resident shared size (RSS) for this process in bytes", procLabels, nil),
 		procPSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_pss_bytes"),
-			"Aggregate memory usage for this process", procLabels, nil),
+			"Aggregate proportional shared size (PSS) for this process in bytes", procLabels, nil),
 		procCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "count"),
 			"Instance count of this process", procLabels, nil),
 	}
