@@ -21,28 +21,28 @@ type ProcessAggregation struct {
 }
 
 type processCache struct {
-	data  map[string]map[uint64]process
+	data  map[string]*entry
 	mutex sync.Mutex
 }
 
 func newProcessCache() *processCache {
 	return &processCache{
-		data:  make(map[string]map[uint64]process),
+		data:  make(map[string]*entry),
 		mutex: sync.Mutex{},
 	}
 }
 
-func (pc *processCache) get(cgroup string) map[uint64]process {
+func (pc *processCache) get(cgroup string) *entry {
 	defer pc.mutex.Unlock()
 	pc.mutex.Lock()
 	value, ok := pc.data[cgroup]
 	if !ok {
-		value = make(map[uint64]process)
+		value = newEntry()
 	}
 	return value
 }
 
-func (pc *processCache) put(cgroup string, processes map[uint64]process) {
+func (pc *processCache) put(cgroup string, processes *entry) {
 	defer pc.mutex.Unlock()
 	pc.mutex.Lock()
 	pc.data[cgroup] = processes
@@ -62,19 +62,65 @@ func CleanProcessCache(active map[string]bool) {
 	cache.clean(active)
 }
 
+type entry struct {
+	data  map[uint64]process
+	mutex sync.Mutex
+}
+
+func newEntry() *entry {
+	return &entry{
+		data:  make(map[uint64]process),
+		mutex: sync.Mutex{},
+	}
+}
+
+func (e *entry) update(processes map[uint64]process) {
+	defer e.mutex.Unlock()
+	e.mutex.Lock()
+	for pid, process := range processes {
+		e.data[pid] = process
+	}
+}
+
+func (e *entry) clean(active map[string]bool) {
+	defer e.mutex.Unlock()
+	e.mutex.Lock()
+	for pid, process := range e.data {
+		if _, ok := active[process.command]; !ok {
+			delete(e.data, pid)
+		}
+	}
+}
+
+func (e *entry) aggregate() map[string]ProcessAggregation {
+	results := make(map[string]ProcessAggregation)
+	defer e.mutex.Unlock()
+	e.mutex.Lock()
+	for pid, process := range e.data {
+		r := results[process.command]
+		r.cpuSecondsTotal += process.cpuSeconds
+		if process.current {
+			r.memoryBytesTotal += process.memoryBytes
+			r.count += 1
+		}
+		results[process.command] = r
+		process.current = false
+		e.data[pid] = process
+	}
+
+	return results
+}
+
 var cache = newProcessCache()
 
 func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation, error) {
-	results := make(map[string]ProcessAggregation)
-
 	fs, err := procfs.NewDefaultFS()
 	if err != nil {
 		return nil, err
 	}
 
-	activeCommands := make(map[string]bool)
-
-	cacheEntry := cache.get(cg)
+	active := make(map[string]bool)
+	processes := make(map[uint64]process)
 
 	for pid := range pids {
 
@@ -103,33 +149,14 @@ func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation
 			current:     true,
 		}
 
-		activeCommands[command] = true
-
-		cacheEntry[pid] = process
-
+		active[command] = true
+		processes[pid] = process
 	}
 
-	for pid, process := range cacheEntry {
-
-		if _, ok := activeCommands[process.command]; !ok {
-			slog.Debug("removing pid from cache entry", "cgroup", cg, "pid", pid, "command", process.command)
-			delete(cacheEntry, pid)
-			continue
-		}
-
-		agg := results[process.command]
-		agg.cpuSecondsTotal += process.cpuSeconds
-		if process.current {
-			agg.memoryBytesTotal += process.memoryBytes
-			agg.count += 1
-		}
-		results[process.command] = agg
-
-		process.current = false
-		cacheEntry[pid] = process
-	}
-
-	cache.put(cg, cacheEntry)
-
+	e := cache.get(cg)
+	e.update(processes)
+	e.clean(active)
+	results := e.aggregate()
+	cache.put(cg, e)
 	return results, nil
 }
