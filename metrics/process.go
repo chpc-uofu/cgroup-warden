@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"log/slog"
 	"sync"
 
 	"github.com/prometheus/procfs"
@@ -126,19 +125,16 @@ func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation
 
 		proc, err := fs.Proc(int(pid))
 		if err != nil {
-			slog.Info("unable to load process", "pid", pid, "err", err)
 			continue
 		}
 
 		command, err := proc.Comm()
 		if err != nil {
-			slog.Info("unable to determine process command", "pid", pid, "err", err)
 			continue
 		}
 
 		stat, err := proc.Stat()
 		if err != nil {
-			slog.Info("unable to read process statistics", "pid", pid, "err", err)
 			continue
 		}
 

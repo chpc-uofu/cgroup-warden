@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chpc-uofu/cgroup-warden/control"
 	"github.com/chpc-uofu/cgroup-warden/metrics"
+	"github.com/containerd/cgroups/v3"
 )
 
 type wardenConfig struct {
@@ -25,6 +27,7 @@ type wardenConfig struct {
 func authorize(next http.Handler, secret string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+secret {
+			slog.Warn("unauthorized request", "address", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -45,7 +48,6 @@ func stringEnvRequired(flag string) string {
 func stringEnvWithDefault(flag string, value string) string {
 	s, set := os.LookupEnv(flag)
 	if !set {
-		slog.Info("flag not set, using default", flag, value)
 		return value
 	} else {
 		return s
@@ -55,7 +57,6 @@ func stringEnvWithDefault(flag string, value string) string {
 func boolEnvWithDefault(flag string, value bool) bool {
 	s, set := os.LookupEnv(flag)
 	if !set {
-		slog.Info("flag not set, using default", flag, value)
 		return value
 	} else {
 		b, err := strconv.ParseBool(s)
@@ -108,18 +109,35 @@ func main() {
 	updateLogLevel(conf.level)
 	slog.Info("set log level", "level", conf.level)
 
+	mode := cgroups.Mode()
+
+	switch mode {
+	case cgroups.Hybrid:
+		slog.Info("using hybrid cgroups")
+	case cgroups.Legacy:
+		slog.Info("using legacy cgroups")
+	case cgroups.Unified:
+		slog.Info("using unified cgroups")
+	case cgroups.Unavailable:
+		slog.Error("cgroups unavailable")
+		os.Exit(1)
+	default:
+		slog.Error("unknown cgroups mode", "mode", mode)
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", metrics.MetricsHandler(conf.cgroup, conf.meta))
 	mux.Handle("/", http.NotFoundHandler())
 
 	if conf.insecure {
-		mux.Handle("/control", ControlHandler)
+		mux.Handle("/control", control.ControlHandler)
 		slog.Info("running in insecure mode")
 		slog.Error("server error", "err", http.ListenAndServe(conf.listen, mux))
 		os.Exit(1)
 
 	} else {
-		mux.Handle("/control", authorize(ControlHandler, conf.bearer))
+		mux.Handle("/control", authorize(control.ControlHandler, conf.bearer))
 		slog.Info("running in secure mode")
 		slog.Error("server error", "err", http.ListenAndServeTLS(conf.listen, conf.cert, conf.key, mux))
 		os.Exit(1)
