@@ -29,14 +29,13 @@ The following flags are passed as environment variables
 `CGROUP_WARDEN_LISTEN_ADDRESS` : Address for the service to listen on. Defaults to `:2112`.  
 `CGROUP_WARDEN_ROOT_CGROUP` : Monitor all cgroups underneath this one. Defaults to `/user.slice`.
 `CGROUP_WARDEN_INSECURE_MODE` : Whether to run without bearer token authentication and TLS. Defaults to `false`.  
-`CGROUP_WARDEN_COLLECT_PROCESS_INFO` : Whether to collect detailed process usage information. Defaults to `true`.  
 `CGROUP_WARDEN_CERTIFICATE` : Path to TLS certificate. Required if running in secure mode.  
 `CGROUP_WARDEN_PRIVATE_KEY`: Path to TLS private key. Required if running in secure mode.  
 `CGROUP_WARDEN_BEARER_TOKEN` : Bearer token to use for authentication. Required if running in secure mode.
 `CGROUP_WARDEN_META_METRICS` : Whether to export metrics regarding the running warden itself. Defaults to `true`.
 `CGROUP_WARDEN_LOG_LEVEL` : Level at which to log messages. Choices are `debug`, `info`, `warning`, and `error`. Defaults to `info`.
 
-When passing these to a systemd service, you can put them into an environment file like
+When passing these to a systemd service, you can put them into an environment file:
 ```shell
 CGROUP_WARDEN_LISTEN_ADDRESS="0.0.0.0:2112"
 CGROUP_WARDEN_BEARER_TOKEN="super-secret-bearer-token"

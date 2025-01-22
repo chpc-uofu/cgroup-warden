@@ -3,6 +3,7 @@ module github.com/chpc-uofu/cgroup-warden
 go 1.23.0
 
 require (
+	github.com/caarlos0/env/v11 v11.3.1
 	github.com/containerd/cgroups/v3 v3.0.5
 	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/godbus/dbus/v5 v5.1.0
