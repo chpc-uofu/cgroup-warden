@@ -45,7 +45,6 @@ Make sure this file is private.
 
 ## Running as a service
 The cgroup-warden is best run as a systemd service. The service must be run as root if the cgroup-warden is to set limits.
-There is an example service file [here](cgroup-warden.service).
 
 ## Contribute
 Contributions are welcomed. To contribute, fork this repository on GitHub and submit a pull request with your proposed changes. Bug reports and feature requests are also appreciated, and can be made via GitHub Issues. 
