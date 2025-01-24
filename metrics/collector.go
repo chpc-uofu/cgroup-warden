@@ -143,6 +143,10 @@ type hierarchy interface {
 
 var uidRe = regexp.MustCompile(`user-(\d+)\.slice`)
 
+// lookupUsername looks up a username given the systemd user slice name.
+// If compiled with CGO, this function will call the C function getpwuid_r
+// from the standard C library; This is necessary when user identities are
+// provided by services like sss and ldap.
 func lookupUsername(slice string) (string, error) {
 	match := uidRe.FindStringSubmatch(slice)
 

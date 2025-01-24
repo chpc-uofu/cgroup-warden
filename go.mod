@@ -3,6 +3,7 @@ module github.com/chpc-uofu/cgroup-warden
 go 1.23.0
 
 require (
+	github.com/caarlos0/env/v11 v11.3.1
 	github.com/containerd/cgroups/v3 v3.0.5
 	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/godbus/dbus/v5 v5.1.0
@@ -23,7 +24,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.61.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
+	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	google.golang.org/protobuf v1.36.2 // indirect
 )
