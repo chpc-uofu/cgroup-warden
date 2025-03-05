@@ -57,6 +57,14 @@ CGROUP_WARDEN_INSECURE_MODE=false
 ...
 ```
 
+## user.slice limits
+To ensure the responsiveness of the interactive nodes, hard limits should be set on the top level user.slice/, ideally lower than actual system resources. This can be done using `systemctl set-property`, like 
+```shell
+systemctl set-property user.slice MemoryMax=64G
+systemctl set-property user.slice CPUQuota=6400%
+```
+For a system with 64 GiB and 64 Cores.
+
 ## Contribute
 Contributions are welcomed. To contribute, fork this repository on GitHub and submit a pull request with your proposed changes. Bug reports and feature requests are also appreciated, and can be made via GitHub Issues. 
 
