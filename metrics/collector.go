@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"os/user"
 	"regexp"
@@ -177,7 +178,7 @@ func lookupUsername(slice string) (string, error) {
 
 // max memory value is a maxint64 rounded down to the nearest page number
 func negativeOneIfMax(value uint64) float64 {
-	if value == MaxCGroupMemoryLimit {
+	if value == MaxCGroupMemoryLimit || value == math.MaxInt64 {
 		return -1
 	}
 	return float64(value)
