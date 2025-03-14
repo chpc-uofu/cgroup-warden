@@ -1,6 +1,11 @@
 package metrics
 
 import (
+	"log/slog"
+	"math"
+	"os"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup1"
@@ -55,10 +60,12 @@ func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
 
 	if stat.CPU != nil {
 		info.cpuUsage = float64(stat.CPU.Usage.Total) / NSPerS
+		info.cpuQuota = readCPUQuotaLegacy(cg)
 	}
 
 	if stat.Memory != nil {
 		info.memoryUsage = stat.Memory.TotalRSS
+		info.memoryMax = stat.Memory.Usage.Limit
 	}
 
 	username, err := lookupUsername(cg)
@@ -76,4 +83,46 @@ func subsystem() ([]cgroup1.Subsystem, error) {
 		cgroup1.NewMemory(cgroupRoot),
 	}
 	return s, nil
+}
+
+func readCPUQuotaLegacy(cg string) int64 {
+	cgroupPath := path.Join("/sys/fs/cgroup/cpu", cg)
+	pathQuota := path.Join(cgroupPath, "cpu.cfs_quota_us")
+	pathPeriod := path.Join(cgroupPath, "cpu.cfs_period_us")
+
+	quotaBuffer, err := os.ReadFile(pathQuota)
+	if err != nil {
+		slog.Error("unable to read cpu quota", "err", err)
+		return 0
+	}
+
+	quota, err := strconv.ParseInt(strings.TrimSpace(string(quotaBuffer)), 10, 64)
+	if err != nil {
+		slog.Error("unable to read cpu quota", "err", err)
+		return 0
+	}
+
+	periodBuffer, err := os.ReadFile(pathPeriod)
+	if err != nil {
+		slog.Error("unable to read cpu quota", "err", err)
+		return 0
+	}
+
+	period, err := strconv.ParseUint(strings.TrimSpace(string(periodBuffer)), 10, 64)
+	if err != nil {
+		slog.Error("unable to read cpu quota", "err", err)
+		return 0
+	}
+
+	if period < 0 {
+		slog.Error("unable to parse cpu.cfs_period_us", "err", "period is less than 0")
+		return 0
+
+	}
+	cpuQuotaPerSecUSec := uint64(math.MaxUint64)
+	if quota > 0 {
+		cpuQuotaPerSecUSec = uint64(quota*USPerS) / period
+	}
+
+	return int64(cpuQuotaPerSecUSec)
 }
