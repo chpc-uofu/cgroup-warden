@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"os/user"
 	"regexp"
@@ -106,7 +107,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 			ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(info.memoryUsage), cg, info.username)
 			ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, info.cpuUsage, cg, info.username)
-			ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, float64(info.memoryMax), cg, info.username)
+			ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, negativeOneIfMax(info.memoryMax), cg, info.username)
 			ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.CounterValue, float64(info.cpuQuota), cg, info.username)
 
 			procs, err := ProcessInfo(cg, pids)
@@ -172,4 +173,11 @@ func lookupUsername(slice string) (string, error) {
 	}
 
 	return user.Username, nil
+}
+
+func negativeOneIfMax(value uint64) float64 {
+	if value == math.MaxUint64 {
+		return -1
+	}
+	return float64(value)
 }
