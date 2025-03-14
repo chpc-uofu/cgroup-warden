@@ -3,7 +3,6 @@ package metrics
 import (
 	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
 	"os/user"
 	"regexp"
@@ -15,9 +14,10 @@ import (
 )
 
 const (
-	USPerS     = 1000000    // million
-	NSPerS     = 1000000000 // billion
-	cgroupRoot = "/sys/fs/cgroup"
+	USPerS               = 1000000    // million
+	NSPerS               = 1000000000 // billion
+	MaxCGroupMemoryLimit = 9223372036854771712
+	cgroupRoot           = "/sys/fs/cgroup"
 )
 
 var (
@@ -175,8 +175,9 @@ func lookupUsername(slice string) (string, error) {
 	return user.Username, nil
 }
 
+// max memory value is a maxint64 rounded down to the nearest page number
 func negativeOneIfMax(value uint64) float64 {
-	if value == math.MaxUint64 {
+	if value == MaxCGroupMemoryLimit {
 		return -1
 	}
 	return float64(value)
