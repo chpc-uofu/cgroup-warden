@@ -31,21 +31,39 @@ The following flags are passed as environment variables
 `CGROUP_WARDEN_INSECURE_MODE` : Whether to run without bearer token authentication and TLS. Defaults to `false`.  
 `CGROUP_WARDEN_CERTIFICATE` : Path to TLS certificate. Required if running in secure mode.  
 `CGROUP_WARDEN_PRIVATE_KEY`: Path to TLS private key. Required if running in secure mode.  
-`CGROUP_WARDEN_BEARER_TOKEN` : Bearer token to use for authentication. Required if running in secure mode.
+`CGROUP_WARDEN_BEARER_TOKEN` : Bearer token to use for authentication. Required if running in secure mode.  
 `CGROUP_WARDEN_META_METRICS` : Whether to export metrics regarding the running warden itself. Defaults to `true`.
 `CGROUP_WARDEN_LOG_LEVEL` : Level at which to log messages. Choices are `debug`, `info`, `warning`, and `error`. Defaults to `info`.
 
 When passing these to a systemd service, you can put them into an environment file:
 ```shell
-CGROUP_WARDEN_LISTEN_ADDRESS="0.0.0.0:2112"
-CGROUP_WARDEN_BEARER_TOKEN="super-secret-bearer-token"
+CGROUP_WARDEN_LISTEN_ADDRESS=0.0.0.0:2112
+CGROUP_WARDEN_BEARER_TOKEN=super-secret-bearer-token
 ...
 ```
 Make sure this file is private.
 
 ## Running as a service
 The cgroup-warden is best run as a systemd service. The service must be run as root if the cgroup-warden is to set limits.
-There is an example service file [here](cgroup-warden.service).
+
+## Running in secure mode
+Because the cgroup-warden runs in a priveledged mode, it is highly recommended to run the program in secure mode. This means enabling HTTPS, and using bearer token authentication. The environment would contain:
+```shell
+...
+CGROUP_WARDEN_BEARER_TOKEN=super-secret-bearer-token
+CGROUP_wARDEN_CERTIFICATE=/path/to/certificate
+CGROUP_WARDEN_PRIVATE_KEY=/path/to/key
+CGROUP_WARDEN_INSECURE_MODE=false
+...
+```
+
+## user.slice limits
+To ensure the responsiveness of the interactive nodes, hard limits should be set on the top level user.slice/, ideally lower than actual system resources. This can be done using `systemctl set-property`, like 
+```shell
+systemctl set-property user.slice MemoryMax=64G
+systemctl set-property user.slice CPUQuota=6400%
+```
+For a system with 64 GiB and 64 Cores.
 
 ## Contribute
 Contributions are welcomed. To contribute, fork this repository on GitHub and submit a pull request with your proposed changes. Bug reports and feature requests are also appreciated, and can be made via GitHub Issues. 
