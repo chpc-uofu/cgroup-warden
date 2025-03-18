@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"os/user"
 	"regexp"
@@ -14,9 +15,10 @@ import (
 )
 
 const (
-	USPerS     = 1000000    // million
-	NSPerS     = 1000000000 // billion
-	cgroupRoot = "/sys/fs/cgroup"
+	USPerS               = 1000000    // million
+	NSPerS               = 1000000000 // billion
+	MaxCGroupMemoryLimit = 9223372036854771712
+	cgroupRoot           = "/sys/fs/cgroup"
 )
 
 var (
@@ -47,12 +49,16 @@ type Collector struct {
 	procCPU     *prometheus.Desc
 	procMemory  *prometheus.Desc
 	procCount   *prometheus.Desc
+	memoryMax   *prometheus.Desc
+	cpuQuota    *prometheus.Desc
 }
 
 type cgroupInfo struct {
 	username    string
 	memoryUsage uint64
 	cpuUsage    float64
+	memoryMax   uint64
+	cpuQuota    int64
 }
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
@@ -61,6 +67,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.procCPU
 	ch <- c.procMemory
 	ch <- c.procCount
+	ch <- c.memoryMax
+	ch <- c.cpuQuota
 }
 
 func (c *Collector) newHierarchy() hierarchy {
@@ -100,6 +108,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 			ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, float64(info.memoryUsage), cg, info.username)
 			ch <- prometheus.MustNewConstMetric(c.cpuUsage, prometheus.CounterValue, info.cpuUsage, cg, info.username)
+			ch <- prometheus.MustNewConstMetric(c.memoryMax, prometheus.GaugeValue, negativeOneIfMax(info.memoryMax), cg, info.username)
+			ch <- prometheus.MustNewConstMetric(c.cpuQuota, prometheus.CounterValue, float64(info.cpuQuota), cg, info.username)
 
 			procs, err := ProcessInfo(cg, pids)
 			if err != nil {
@@ -133,6 +143,10 @@ func NewCollector(root string) *Collector {
 			"Aggregate memory usage for this process", procLabels, nil),
 		procCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "count"),
 			"Instance count of this process", procLabels, nil),
+		memoryMax: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "max"),
+			"Maximum memory limit of this unit in bytes.", labels, nil),
+		cpuQuota: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "quota"),
+			"Maximum CPU quota of this unit in micro seconds per second", labels, nil),
 	}
 }
 
@@ -160,4 +174,12 @@ func lookupUsername(slice string) (string, error) {
 	}
 
 	return user.Username, nil
+}
+
+// max memory value is a maxint64 rounded down to the nearest page number
+func negativeOneIfMax(value uint64) float64 {
+	if value == MaxCGroupMemoryLimit || value == math.MaxUint64 {
+		return -1
+	}
+	return float64(value)
 }

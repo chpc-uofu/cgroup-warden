@@ -2,6 +2,10 @@ package metrics
 
 import (
 	"log/slog"
+	"math"
+	"os"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup2"
@@ -61,10 +65,12 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 
 	if stat.CPU != nil {
 		info.cpuUsage = float64(stat.CPU.UsageUsec) / USPerS
+		info.cpuQuota = readCPUQuotaUnified(cg)
 	}
 
 	if stat.Memory != nil {
 		info.memoryUsage = stat.Memory.Usage
+		info.memoryMax = stat.Memory.UsageLimit
 	}
 
 	username, err := lookupUsername(cg)
@@ -74,4 +80,45 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 
 	info.username = username
 	return info, nil
+}
+
+func readCPUQuotaUnified(cg string) int64 {
+	cgroupPath := path.Join("/sys/fs/cgroup", cg)
+	p := path.Join(cgroupPath, "cpu.max")
+	buf, err := os.ReadFile(p)
+	if err != nil {
+		slog.Error("unable to read cpu quota", "err", err)
+		return 0
+	}
+	values := strings.Split(strings.TrimSpace(string(buf)), " ")
+
+	var quota int64
+	var period uint64
+
+	if values[0] == "max" {
+		return -1
+	}
+
+	quota, err = strconv.ParseInt(values[0], 10, 64)
+	if err != nil {
+		slog.Error("unable to parse cpu.max quota", "err", err)
+		return 0
+	}
+
+	period, err = strconv.ParseUint(values[1], 10, 64)
+	if err != nil {
+		slog.Error("unable to parse cpu.max period", "err", err)
+		return 0
+	}
+
+	if period < 0 {
+		slog.Error("unable to parse cpu.max", "err", "period is less than 0")
+		return 0
+	}
+
+	cpuQuotaPerSecUSec := uint64(math.MaxUint64)
+	if quota > 0 {
+		cpuQuotaPerSecUSec = uint64(quota*USPerS) / period
+	}
+	return int64(cpuQuotaPerSecUSec)
 }

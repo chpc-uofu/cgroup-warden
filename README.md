@@ -27,7 +27,7 @@ If non-local user accounts are used, then the binary must be built with `CGO_ENA
 The following flags are passed as environment variables  
 
 `CGROUP_WARDEN_LISTEN_ADDRESS` : Address for the service to listen on. Defaults to `:2112`.  
-`CGROUP_WARDEN_ROOT_CGROUP` : Monitor all cgroups underneath this one. Defaults to `/user.slice`.  
+`CGROUP_WARDEN_ROOT_CGROUP` : Monitor all cgroups underneath this one. Defaults to `/user.slice`.
 `CGROUP_WARDEN_INSECURE_MODE` : Whether to run without bearer token authentication and TLS. Defaults to `false`.  
 `CGROUP_WARDEN_CERTIFICATE` : Path to TLS certificate. Required if running in secure mode.  
 `CGROUP_WARDEN_PRIVATE_KEY`: Path to TLS private key. Required if running in secure mode.  
