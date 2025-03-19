@@ -39,6 +39,8 @@ When passing these to a systemd service, you can put them into an environment fi
 ```shell
 CGROUP_WARDEN_LISTEN_ADDRESS=0.0.0.0:2112
 CGROUP_WARDEN_BEARER_TOKEN=super-secret-bearer-token
+CGROUP_WARDEN_CERTIFICATE=/path/to/certificate
+CGROUP_WARDEN_PRIVATE_KEY=/path/to/privkey
 ...
 ```
 Make sure this file is private.
