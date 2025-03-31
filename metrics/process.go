@@ -9,6 +9,7 @@ import (
 type process struct {
 	cpuSeconds  float64
 	memoryBytes uint64
+	memoryPSS   uint64
 	command     string
 	current     bool
 }
@@ -16,6 +17,7 @@ type process struct {
 type ProcessAggregation struct {
 	cpuSecondsTotal  float64
 	memoryBytesTotal uint64
+	memoryPSSTotal   uint64
 	count            uint64
 }
 
@@ -100,6 +102,7 @@ func (e *entry) aggregate() map[string]ProcessAggregation {
 		r.cpuSecondsTotal += process.cpuSeconds
 		if process.current {
 			r.memoryBytesTotal += process.memoryBytes
+			r.memoryPSSTotal += process.memoryPSS
 			r.count += 1
 		}
 		results[process.command] = r
@@ -138,9 +141,15 @@ func ProcessInfo(cg string, pids map[uint64]bool) (map[string]ProcessAggregation
 			continue
 		}
 
+		rollup, err := proc.ProcSMapsRollup()
+		if err != nil {
+			continue
+		}
+
 		process := process{
 			cpuSeconds:  stat.CPUTime(),
 			memoryBytes: uint64(stat.ResidentMemory()),
+			memoryPSS:   rollup.Pss,
 			command:     command,
 			current:     true,
 		}
