@@ -48,6 +48,7 @@ type Collector struct {
 	cpuUsage    *prometheus.Desc
 	procCPU     *prometheus.Desc
 	procMemory  *prometheus.Desc
+	procPSS     *prometheus.Desc
 	procCount   *prometheus.Desc
 	memoryMax   *prometheus.Desc
 	cpuQuota    *prometheus.Desc
@@ -67,6 +68,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.procCPU
 	ch <- c.procMemory
 	ch <- c.procCount
+	ch <- c.procPSS
 	ch <- c.memoryMax
 	ch <- c.cpuQuota
 }
@@ -120,6 +122,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			for name, p := range procs {
 				ch <- prometheus.MustNewConstMetric(c.procCPU, prometheus.CounterValue, float64(p.cpuSecondsTotal), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procMemory, prometheus.GaugeValue, float64(p.memoryBytesTotal), cg, info.username, name)
+				ch <- prometheus.MustNewConstMetric(c.procPSS, prometheus.GaugeValue, float64(p.memoryPSSTotal), cg, info.username, name)
 				ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), cg, info.username, name)
 			}
 		}()
@@ -143,6 +146,8 @@ func NewCollector(root string) *Collector {
 			"Aggregate memory usage for this process", procLabels, nil),
 		procCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "count"),
 			"Instance count of this process", procLabels, nil),
+		procPSS: prometheus.NewDesc(prometheus.BuildFQName(namespace, "proc", "memory_pss_bytes"),
+			"Aggregate PSS memory usage of this process", procLabels, nil),
 		memoryMax: prometheus.NewDesc(prometheus.BuildFQName(namespace, "memory", "max"),
 			"Maximum memory limit of this unit in bytes.", labels, nil),
 		cpuQuota: prometheus.NewDesc(prometheus.BuildFQName(namespace, "cpu", "quota"),
