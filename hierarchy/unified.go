@@ -83,8 +83,8 @@ func (u *Unified) CGroupInfo(cg string) (CGroupInfo, error) {
 	return info, nil
 }
 
-func (u *Unified) SetMemorySwap(limit int64) error {
-	return errors.New("unsupported operation")
+func (u *Unified) SetMemorySwap(unit string, limit int64) (int64, error) {
+	return -1, errors.New("unsupported operation")
 }
 
 func readCPUQuotaUnified(cg string) int64 {

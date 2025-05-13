@@ -51,7 +51,7 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 		}
 
 		if request.Property.Name == MemorySwapMax && cgroups.Mode() == cgroups.Legacy {
-			err = setCGroupMemorySwapLegacy(request, cgroupRoot)
+			_, err = setCGroupMemorySwapLegacy(request, cgroupRoot)
 		} else {
 			err = setSystemdProperty(request)
 		}
@@ -67,14 +67,14 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 	}
 }
 
-func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) error {
+func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) (int64, error) {
 	val, ok := request.Property.Value.(float64)
 	if !ok {
-		return errors.New("invalid type for property, expected float64")
+		return -1, errors.New("invalid type for property, expected float64")
 	}
 	value := int64(val)
 	h := hierarchy.NewHierarchy(cgroupRoot)
-	return h.SetMemorySwap(value)
+	return h.SetMemorySwap(request.Unit, value)
 }
 
 func setSystemdProperty(request controlRequest) error {

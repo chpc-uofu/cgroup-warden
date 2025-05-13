@@ -1,6 +1,7 @@
 package hierarchy
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 	"os"
@@ -16,9 +17,13 @@ type Legacy struct {
 	Root string
 }
 
-func (l *Legacy) SetMemSwapLimit(limit int64) (int64, error) {
+func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 
-	manager, err := cgroup1.Load(cgroup1.StaticPath(l.Root), cgroup1.WithHierarchy(subsystem))
+	cgroup := path.Join(l.Root, unit)
+
+	fmt.Println(cgroup)
+
+	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		return -1, err
 	}
@@ -28,6 +33,8 @@ func (l *Legacy) SetMemSwapLimit(limit int64) (int64, error) {
 			Swap: &limit,
 		},
 	}
+
+	fmt.Printf("%+v", *resources.Memory.Swap)
 
 	err = manager.Update(resources)
 	if err != nil {
@@ -105,10 +112,6 @@ func subsystem() ([]cgroup1.Subsystem, error) {
 		cgroup1.NewMemory(cgroupRoot),
 	}
 	return s, nil
-}
-
-func (l *Legacy) SetMemorySwap(limit int64) error {
-	return nil
 }
 
 func readCPUQuotaLegacy(cg string) int64 {
