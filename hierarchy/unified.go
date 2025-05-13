@@ -1,6 +1,7 @@
-package metrics
+package hierarchy
 
 import (
+	"errors"
 	"log/slog"
 	"math"
 	"os"
@@ -11,15 +12,15 @@ import (
 	"github.com/containerd/cgroups/v3/cgroup2"
 )
 
-type unified struct {
-	root string
+type Unified struct {
+	Root string
 }
 
-func (u *unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
+func (u *Unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 
 	var pids = make(map[string]map[uint64]bool)
 
-	manager, err := cgroup2.Load(u.root)
+	manager, err := cgroup2.Load(u.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +51,8 @@ func (u *unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 	return pids, nil
 }
 
-func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
-	var info cgroupInfo
+func (u *Unified) CGroupInfo(cg string) (CGroupInfo, error) {
+	var info CGroupInfo
 
 	manager, err := cgroup2.Load(cg)
 	if err != nil {
@@ -64,13 +65,13 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 	}
 
 	if stat.CPU != nil {
-		info.cpuUsage = float64(stat.CPU.UsageUsec) / USPerS
-		info.cpuQuota = readCPUQuotaUnified(cg)
+		info.CPUUsage = float64(stat.CPU.UsageUsec) / USPerS
+		info.CPUQuota = readCPUQuotaUnified(cg)
 	}
 
 	if stat.Memory != nil {
-		info.memoryUsage = stat.Memory.Usage
-		info.memoryMax = stat.Memory.UsageLimit
+		info.MemoryUsage = stat.Memory.Usage
+		info.MemoryMax = stat.Memory.UsageLimit
 	}
 
 	username, err := lookupUsername(cg)
@@ -78,8 +79,12 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 		return info, err
 	}
 
-	info.username = username
+	info.Username = username
 	return info, nil
+}
+
+func (u *Unified) SetMemorySwap(limit int64) error {
+	return errors.New("unsupported operation")
 }
 
 func readCPUQuotaUnified(cg string) int64 {
