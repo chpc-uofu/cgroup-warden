@@ -34,14 +34,27 @@ func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 		},
 	}
 
-	fmt.Printf("%+v", *resources.Memory.Swap)
-
 	err = manager.Update(resources)
 	if err != nil {
-		return -1, err
-	}
+		//if write failed, it is likely because limit was below current usage or current MemMax
+		stat, err := manager.Stat(cgroup1.IgnoreNotExist)
+		if err != nil || stat == nil {
+			return  -1, err
+		}
 
-	return limit, nil
+		if stat.Memory != nil {
+			fallbackLimit := int64(stat.Memory.Usage.Limit) + 2000
+			*resources.Memory.Swap = fallbackLimit
+
+			err = manager.Update(resources)
+			return fallbackLimit, err
+		} else {
+			return -1, err
+		}
+	
+	} else {
+		return limit, nil
+	}
 }
 
 func (l *Legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
