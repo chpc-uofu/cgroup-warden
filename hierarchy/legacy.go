@@ -43,7 +43,7 @@ func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 		}
 
 		if stat.Memory != nil {
-			fallbackLimit := int64(stat.Memory.Usage.Limit) + 2000
+			fallbackLimit := int64(max(stat.Memory.Usage.Limit, stat.Memory.TotalRSS + 1000))
 			*resources.Memory.Swap = fallbackLimit
 
 			err = manager.Update(resources)
