@@ -1,7 +1,6 @@
 package hierarchy
 
 import (
-	"fmt"
 	"log/slog"
 	"math"
 	"os"
@@ -18,43 +17,29 @@ type Legacy struct {
 }
 
 func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
-
 	cgroup := path.Join(l.Root, unit)
-
-	fmt.Println(cgroup)
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		return -1, err
 	}
 
+	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
+	if err != nil || stat == nil || stat.Memory == nil {
+		return  -1, err
+	}
+	
+	newLimit := max(limit, int64(stat.Memory.TotalRSS))
+
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
-			Swap: &limit,
+			Swap: &newLimit,
+			Limit: &newLimit,
 		},
 	}
 
 	err = manager.Update(resources)
-	if err != nil {
-		//if write failed, it is likely because limit was below current usage or current MemMax
-		stat, err := manager.Stat(cgroup1.IgnoreNotExist)
-		if err != nil || stat == nil {
-			return  -1, err
-		}
-
-		if stat.Memory != nil {
-			fallbackLimit := int64(max(stat.Memory.Usage.Limit, stat.Memory.TotalRSS + 1000))
-			*resources.Memory.Swap = fallbackLimit
-
-			err = manager.Update(resources)
-			return fallbackLimit, err
-		} else {
-			return -1, err
-		}
-	
-	} else {
-		return limit, nil
-	}
+	return newLimit, err
 }
 
 func (l *Legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
