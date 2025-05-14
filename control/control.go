@@ -37,6 +37,8 @@ type controlRequest struct {
 	Runtime  bool            `json:"runtime"`
 }
 
+const DefaultCgroupLimit int64 = 9223372036854771712
+
 func ControlHandler(cgroupRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -73,6 +75,10 @@ func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) (int64
 		return -1, errors.New("invalid type for property, expected float64")
 	}
 	value := int64(val)
+	if value == -1 {
+		value = DefaultCgroupLimit
+	}
+
 	h := hierarchy.NewHierarchy(cgroupRoot)
 	return h.SetMemorySwap(request.Unit, value)
 }
