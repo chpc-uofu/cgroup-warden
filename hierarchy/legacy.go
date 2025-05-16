@@ -33,6 +33,7 @@ func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
+			Swap: &newLimit,
 			Limit: &newLimit,
 		},
 	}
