@@ -29,11 +29,10 @@ func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 		return  -1, err
 	}
 	
-	newLimit := max(limit, int64(stat.Memory.TotalRSS))
+	newLimit := max(limit, int64(stat.Memory.TotalRSS) + 4096*1000)
 
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
-			Swap: &newLimit,
 			Limit: &newLimit,
 		},
 	}

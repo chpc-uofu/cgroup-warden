@@ -37,42 +37,69 @@ type controlRequest struct {
 	Runtime  bool            `json:"runtime"`
 }
 
+type controlResponse struct {
+	Unit     string          `json:"unit"`
+	Property controlProperty `json:"property"`
+	Error    string          `json:"error,omitempty"`
+	Warning  string          `json:"warning,omitempty"`
+}
+
 const DefaultCgroupLimit int64 = 9223372036854771712
 
 func ControlHandler(cgroupRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+
+		var err error
+		var response controlResponse
+		status := http.StatusOK
+
+		defer func() {
+			if err != nil {
+				response.Error = err.Error()
+			}
+
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(response)
+		}()
 
 		var request controlRequest
-		err := json.NewDecoder(r.Body).Decode(&request)
+		err = json.NewDecoder(r.Body).Decode(&request)
 		if err != nil {
 			slog.Warn("unable to decode json request", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			status = http.StatusBadRequest
 			return
 		}
 
+		response.Unit = request.Unit
+		response.Property = request.Property
+
+		var newLimit int64
+		var fallback bool = false
+
 		if request.Property.Name == MemorySwapMax && cgroups.Mode() == cgroups.Legacy {
-			_, err = setCGroupMemorySwapLegacy(request, cgroupRoot)
+			newLimit, fallback, err = setCGroupMemorySwapLegacy(request, cgroupRoot)
+			response.Property.Value = newLimit
+
+			if fallback {
+				response.Warning = fmt.Sprintf("unable to clamp memory limit down, defaulted to current usage %d", newLimit)
+			}
 		} else {
 			err = setSystemdProperty(request)
 		}
 
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			status = http.StatusBadRequest
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "success")
 	}
 }
 
-func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) (int64, error) {
+func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) (int64, bool, error) {
 	val, ok := request.Property.Value.(float64)
 	if !ok {
-		return -1, errors.New("invalid type for property, expected float64")
+		return -1, false, errors.New("invalid type for property, expected float64")
 	}
 	value := int64(val)
 	if value == -1 {
@@ -80,7 +107,11 @@ func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) (int64
 	}
 
 	h := hierarchy.NewHierarchy(cgroupRoot)
-	return h.SetMemorySwap(request.Unit, value)
+	newLimit, err := h.SetMemorySwap(request.Unit, value)
+
+	fallback := (newLimit != value)
+
+	return newLimit, fallback, err
 }
 
 func setSystemdProperty(request controlRequest) error {
