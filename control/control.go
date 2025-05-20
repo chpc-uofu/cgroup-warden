@@ -87,7 +87,7 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 			}
 		} else  {
 			if request.Property.Name == MemorySwapMax && cgroups.Mode() == cgroups.Unified {
-				request.Property.Value = 0
+				request.Property.Value = 0.0
 			}
 
 			err = setSystemdProperty(request)
@@ -154,6 +154,7 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 
 	case MemorySwapMax:
 		val, ok := controlProp.Value.(float64)
+		fmt.Printf("%v val:%T\n", controlProp, controlProp.Value)
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
 		}
@@ -162,13 +163,13 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		if val == -1 {
 			property.Value = dbus.MakeVariant("max")
 		} else {
-
 			property.Value = dbus.MakeVariant(uint64(val))
 		}
 		property.Value = dbus.MakeVariant(uint64(val))
 
 	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow:
 		val, ok := controlProp.Value.(float64) // json type
+		fmt.Printf("%v val:%T\n", controlProp, controlProp.Value)
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
 		}
