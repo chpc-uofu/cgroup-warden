@@ -86,10 +86,6 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 				response.Warning = fmt.Sprintf("unable to clamp memory limit down, defaulted to current usage %d", newLimit)
 			}
 		} else  {
-			if request.Property.Name == MemorySwapMax && cgroups.Mode() == cgroups.Unified {
-				request.Property.Value = 0.0
-			}
-
 			err = setSystemdProperty(request)
 		}
 
@@ -151,25 +147,8 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 			return property, errors.New("invalid type for property, expected bool")
 		}
 		property.Value = dbus.MakeVariant(val)
-
-	case MemorySwapMax:
-		val, ok := controlProp.Value.(float64)
-		fmt.Printf("%v val:%T\n", controlProp, controlProp.Value)
-		if !ok {
-			return property, errors.New("invalid type for property, expected float64")
-		}
-
-		// -1 not accepted as the 'unset' value, but rather 'max'
-		if val == -1 {
-			property.Value = dbus.MakeVariant("max")
-		} else {
-			property.Value = dbus.MakeVariant(uint64(val))
-		}
-		property.Value = dbus.MakeVariant(uint64(val))
-
-	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow:
+	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow, MemorySwapMax:
 		val, ok := controlProp.Value.(float64) // json type
-		fmt.Printf("%v val:%T\n", controlProp, controlProp.Value)
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
 		}
