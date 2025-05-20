@@ -85,7 +85,11 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 			if fallback {
 				response.Warning = fmt.Sprintf("unable to clamp memory limit down, defaulted to current usage %d", newLimit)
 			}
-		} else {
+		} else  {
+			if request.Property.Name == MemorySwapMax && cgroups.Mode() == cgroups.Unified {
+				request.Property.Value = 0
+			}
+
 			err = setSystemdProperty(request)
 		}
 
