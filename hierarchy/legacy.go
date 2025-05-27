@@ -16,11 +16,9 @@ type Legacy struct {
 	Root string
 }
 
-const LimitBuffer = 4096 * 100
 
-func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
+func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 	cgroup := path.Join(l.Root, unit)
-
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		return -1, err

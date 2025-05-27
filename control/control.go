@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	"github.com/chpc-uofu/cgroup-warden/hierarchy"
-	"github.com/containerd/cgroups/v3"
+	//"github.com/containerd/cgroups/v3"
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	dbus "github.com/godbus/dbus/v5"
 )
@@ -44,9 +44,6 @@ type controlResponse struct {
 	Warning  string          `json:"warning,omitempty"`
 }
 
-const DefaultCgroupLimit int64 = 9223372036854771712
-const SwapRatio float64 = 0.1
-
 func ControlHandler(cgroupRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -79,14 +76,14 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 		var newLimit int64
 		var fallback bool = false
 
-		if cgroups.Mode() == cgroups.Legacy && (request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax) {
-			newLimit, fallback, err = setCGroupMemorySwapLegacy(request, cgroupRoot)
+		if request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax {
+			newLimit, fallback, err = setCGroupMemoryLimits(request, cgroupRoot)
 			response.Property.Value = newLimit
 
 			if fallback {
 				response.Warning = fmt.Sprintf("unable to clamp memory limit down, defaulted to current usage %d", newLimit)
 			}
-		} else  {
+		} else {
 			err = setSystemdProperty(request)
 		}
 
@@ -97,20 +94,21 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 	}
 }
 
-func setCGroupMemorySwapLegacy(request controlRequest, cgroupRoot string) (int64, bool, error) {
+func setCGroupMemoryLimits(request controlRequest, cgroupRoot string) (int64, bool, error) {
 	val, ok := request.Property.Value.(float64)
 	if !ok {
 		return -1, false, errors.New("invalid type for property, expected float64")
 	}
+
 	value := int64(val)
 	if value == -1 {
-		value = DefaultCgroupLimit
+		value = hierarchy.MaxCGroupMemoryLimit
 	}
 
 	h := hierarchy.NewHierarchy(cgroupRoot)
-	newLimit, err := h.SetMemorySwap(request.Unit, value)
+	newLimit, err := h.SetMemoryLimits(request.Unit, value)
 
-	fallback := (newLimit != value)
+	fallback := (newLimit != value && newLimit != -1)
 
 	return newLimit, fallback, err
 }
@@ -152,10 +150,6 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		val, ok := controlProp.Value.(float64) // json type
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
-		}
-
-		if controlProp.Name == MemorySwapMax {
-			val *= SwapRatio
 		}
 
 		property.Value = dbus.MakeVariant(uint64(val))

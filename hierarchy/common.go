@@ -12,13 +12,14 @@ const (
 	USPerS               = 1000000    // million
 	NSPerS               = 1000000000 // billion
 	MaxCGroupMemoryLimit = 9223372036854771712
+	LimitBuffer 		 = 4096 * 100
 	cgroupRoot           = "/sys/fs/cgroup"
 )
 
 type Hierarchy interface {
 	GetGroupsWithPIDs() (map[string]map[uint64]bool, error)
 	CGroupInfo(cg string) (CGroupInfo, error)
-	SetMemorySwap(unit string, limit int64) (int64, error)
+	SetMemoryLimits(unit string, limit int64) (int64, error)
 }
 
 func NewHierarchy(root string) Hierarchy {
