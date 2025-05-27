@@ -45,6 +45,7 @@ type controlResponse struct {
 }
 
 const DefaultCgroupLimit int64 = 9223372036854771712
+const SwapRatio float64 = 0.1
 
 func ControlHandler(cgroupRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +153,11 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
 		}
+
+		if controlProp.Name == MemorySwapMax {
+			val *= SwapRatio
+		}
+
 		property.Value = dbus.MakeVariant(uint64(val))
 
 	default:
