@@ -78,7 +78,7 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 		var newLimit int64
 		var fallback bool = false
 
-		if request.Property.Name == MemorySwapMax && cgroups.Mode() == cgroups.Legacy {
+		if cgroups.Mode() == cgroups.Legacy && (request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax) {
 			newLimit, fallback, err = setCGroupMemorySwapLegacy(request, cgroupRoot)
 			response.Property.Value = newLimit
 

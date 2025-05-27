@@ -16,6 +16,8 @@ type Legacy struct {
 	Root string
 }
 
+const LimitBuffer = 4096 * 100
+
 func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 	cgroup := path.Join(l.Root, unit)
 
@@ -29,7 +31,7 @@ func (l *Legacy) SetMemorySwap(unit string, limit int64) (int64, error) {
 		return  -1, err
 	}
 	
-	newLimit := max(limit, int64(stat.Memory.Swap.Usage+ 4096*100))
+	newLimit := max(limit, int64(stat.Memory.Swap.Usage + LimitBuffer))
 
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
