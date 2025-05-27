@@ -51,13 +51,13 @@ func main() {
 	mux.Handle("/", http.NotFoundHandler())
 
 	if conf.InsecureMode {
-		mux.Handle("/control", control.ControlHandler)
-		slog.Info("Starting server")
+		mux.Handle("/control", control.ControlHandler(conf.RootCGroup))
+		slog.Info("Starting server!")
 		slog.Error("server error", "err", http.ListenAndServe(conf.ListenAddress, mux))
 		os.Exit(1)
 
 	} else {
-		mux.Handle("/control", authorize(control.ControlHandler, conf.BearerToken))
+		mux.Handle("/control", authorize(control.ControlHandler(conf.RootCGroup), conf.BearerToken))
 		slog.Info("Starting server")
 		slog.Error("server error", "err", http.ListenAndServeTLS(conf.ListenAddress, conf.Certificate, conf.PrivateKey, mux))
 		os.Exit(1)

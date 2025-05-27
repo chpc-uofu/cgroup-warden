@@ -1,4 +1,4 @@
-package metrics
+package hierarchy
 
 import (
 	"log/slog"
@@ -9,17 +9,44 @@ import (
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup1"
+	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
-type legacy struct {
-	root string
+type Legacy struct {
+	Root string
 }
 
-func (l *legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
+
+func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
+	cgroup := path.Join(l.Root, unit)
+	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
+	if err != nil {
+		return -1, err
+	}
+
+	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
+	if err != nil || stat == nil || stat.Memory == nil {
+		return  -1, err
+	}
+	
+	newLimit := max(limit, int64(stat.Memory.Swap.Usage + LimitBuffer))
+
+	resources := &specs.LinuxResources{
+		Memory: &specs.LinuxMemory{
+			Swap: &newLimit,
+			Limit: &newLimit,
+		},
+	}
+
+	err = manager.Update(resources)
+	return newLimit, err
+}
+
+func (l *Legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 
 	var pids = make(map[string]map[uint64]bool)
 
-	manager, err := cgroup1.Load(cgroup1.StaticPath(l.root), cgroup1.WithHierarchy(subsystem))
+	manager, err := cgroup1.Load(cgroup1.StaticPath(l.Root), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		return nil, err
 	}
@@ -45,8 +72,8 @@ func (l *legacy) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 	return pids, nil
 }
 
-func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
-	var info cgroupInfo
+func (l *Legacy) CGroupInfo(cg string) (CGroupInfo, error) {
+	var info CGroupInfo
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cg), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
@@ -59,13 +86,13 @@ func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
 	}
 
 	if stat.CPU != nil {
-		info.cpuUsage = float64(stat.CPU.Usage.Total) / NSPerS
-		info.cpuQuota = readCPUQuotaLegacy(cg)
+		info.CPUUsage = float64(stat.CPU.Usage.Total) / NSPerS
+		info.CPUQuota = readCPUQuotaLegacy(cg)
 	}
 
 	if stat.Memory != nil {
-		info.memoryUsage = stat.Memory.TotalRSS
-		info.memoryMax = stat.Memory.Usage.Limit
+		info.MemoryUsage = stat.Memory.TotalRSS
+		info.MemoryMax = stat.Memory.Usage.Limit
 	}
 
 	username, err := lookupUsername(cg)
@@ -73,7 +100,7 @@ func (l *legacy) CGroupInfo(cg string) (cgroupInfo, error) {
 		return info, err
 	}
 
-	info.username = username
+	info.Username = username
 	return info, nil
 }
 

@@ -8,17 +8,20 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/chpc-uofu/cgroup-warden/hierarchy"
+	//"github.com/containerd/cgroups/v3"
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	dbus "github.com/godbus/dbus/v5"
 )
 
-// properties that can be modified at runtime,
+// properties that can be modified at runtime
 var (
 	CPUAccounting      = "CPUAccounting"
 	CPUQuotaPerSecUSec = "CPUQuotaPerSecUSec"
 	MemoryAccounting   = "MemoryAccounting"
 	MemoryHigh         = "MemoryHigh"
 	MemoryMax          = "MemoryMax"
+	MemorySwapMax      = "MemorySwapMax"
 	MemoryLow          = "MemoryLow"
 	MemoryMin          = "MemoryMin"
 )
@@ -34,46 +37,103 @@ type controlRequest struct {
 	Runtime  bool            `json:"runtime"`
 }
 
-var ControlHandler = http.HandlerFunc(controlHandler)
+type controlResponse struct {
+	Unit     string          `json:"unit"`
+	Property controlProperty `json:"property"`
+	Error    string          `json:"error,omitempty"`
+	Warning  string          `json:"warning,omitempty"`
+}
 
-func controlHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+func ControlHandler(cgroupRoot string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	var request controlRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		slog.Warn("unable to decode json request", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		var err error
+		var response controlResponse
+		status := http.StatusOK
+
+		defer func() {
+			if err != nil {
+				response.Error = err.Error()
+			}
+
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(response)
+		}()
+
+		var request controlRequest
+		err = json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			slog.Warn("unable to decode json request", "err", err.Error())
+			status = http.StatusBadRequest
+			return
+		}
+
+		response.Unit = request.Unit
+		response.Property = request.Property
+
+		var newLimit int64
+		var fallback bool = false
+
+		if request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax {
+			newLimit, fallback, err = setCGroupMemoryLimits(request, cgroupRoot)
+			response.Property.Value = newLimit
+
+			if fallback {
+				response.Warning = fmt.Sprintf("unable to clamp memory limit down, defaulted to current usage %d", newLimit)
+			}
+		} else {
+			err = setSystemdProperty(request)
+		}
+
+		if err != nil {
+			status = http.StatusBadRequest
+			return
+		}
+	}
+}
+
+func setCGroupMemoryLimits(request controlRequest, cgroupRoot string) (int64, bool, error) {
+	val, ok := request.Property.Value.(float64)
+	if !ok {
+		return -1, false, errors.New("invalid type for property, expected float64")
 	}
 
+	value := int64(val)
+	if value == -1 {
+		value = hierarchy.MaxCGroupMemoryLimit
+	}
+
+	h := hierarchy.NewHierarchy(cgroupRoot)
+	newLimit, err := h.SetMemoryLimits(request.Unit, value)
+
+	fallback := (newLimit != value && newLimit != -1)
+
+	return newLimit, fallback, err
+}
+
+func setSystemdProperty(request controlRequest) error {
 	property, err := transform(request.Property)
 	if err != nil {
 		slog.Warn("unable to create systemd property", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 
 	ctx := context.Background()
 	conn, err := systemd.NewSystemConnectionContext(ctx)
 	if err != nil {
 		slog.Warn("unable to connect to systemd", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 	defer conn.Close()
 
 	err = conn.SetUnitPropertiesContext(ctx, request.Unit, request.Runtime, property)
 	if err != nil {
 		slog.Warn("unable to set property", "err", err.Error(), "property", property, "unit", request.Unit)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "success")
+	return nil
 }
 
 func transform(controlProp controlProperty) (systemd.Property, error) {
@@ -86,12 +146,12 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 			return property, errors.New("invalid type for property, expected bool")
 		}
 		property.Value = dbus.MakeVariant(val)
-
-	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow:
+	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow, MemorySwapMax:
 		val, ok := controlProp.Value.(float64) // json type
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
 		}
+
 		property.Value = dbus.MakeVariant(uint64(val))
 
 	default:

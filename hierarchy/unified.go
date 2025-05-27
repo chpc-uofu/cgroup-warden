@@ -1,4 +1,4 @@
-package metrics
+package hierarchy
 
 import (
 	"log/slog"
@@ -11,15 +11,15 @@ import (
 	"github.com/containerd/cgroups/v3/cgroup2"
 )
 
-type unified struct {
-	root string
+type Unified struct {
+	Root string
 }
 
-func (u *unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
+func (u *Unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 
 	var pids = make(map[string]map[uint64]bool)
 
-	manager, err := cgroup2.Load(u.root)
+	manager, err := cgroup2.Load(u.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +50,8 @@ func (u *unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
 	return pids, nil
 }
 
-func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
-	var info cgroupInfo
+func (u *Unified) CGroupInfo(cg string) (CGroupInfo, error) {
+	var info CGroupInfo
 
 	manager, err := cgroup2.Load(cg)
 	if err != nil {
@@ -64,13 +64,13 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 	}
 
 	if stat.CPU != nil {
-		info.cpuUsage = float64(stat.CPU.UsageUsec) / USPerS
-		info.cpuQuota = readCPUQuotaUnified(cg)
+		info.CPUUsage = float64(stat.CPU.UsageUsec) / USPerS
+		info.CPUQuota = readCPUQuotaUnified(cg)
 	}
 
 	if stat.Memory != nil {
-		info.memoryUsage = stat.Memory.Usage
-		info.memoryMax = stat.Memory.UsageLimit
+		info.MemoryUsage = stat.Memory.Usage
+		info.MemoryMax = stat.Memory.UsageLimit
 	}
 
 	username, err := lookupUsername(cg)
@@ -78,8 +78,36 @@ func (u *unified) CGroupInfo(cg string) (cgroupInfo, error) {
 		return info, err
 	}
 
-	info.username = username
+	info.Username = username
 	return info, nil
+}
+
+const SwapRatio float64 = 0.1
+
+func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
+	manager, err := cgroup2.Load(path.Join(u.Root, unit))
+	if err != nil {
+		return -1, err
+	}
+
+	stat, err := manager.Stat()
+	if err != nil || stat == nil || stat.Memory == nil {
+		return -1, err
+	}
+
+
+	newMax := max(limit, int64(stat.Memory.Usage + LimitBuffer))
+	newSwap := int64(float64(limit) * SwapRatio)
+
+	resources := &cgroup2.Resources{
+		Memory: &cgroup2.Memory{
+			Swap: &newSwap,
+			Max: &newMax,
+		},
+	}
+
+	err = manager.Update(resources)
+	return newMax, err
 }
 
 func readCPUQuotaUnified(cg string) int64 {
