@@ -78,7 +78,12 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 
 		if request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax {
 			newLimit, fallback, err = setCGroupMemoryLimits(request, cgroupRoot)
-			response.Property.Value = newLimit
+
+			if newLimit == hierarchy.MaxCGroupMemoryLimit{
+				response.Property.Value = -1
+			} else {
+				response.Property.Value = newLimit
+			}
 
 			if fallback {
 				response.Warning = fmt.Sprintf("unable to clamp memory limit down, defaulted to current usage %d", newLimit)
