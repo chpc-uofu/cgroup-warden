@@ -73,6 +73,8 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 		response.Unit = request.Unit
 		response.Property = request.Property
 
+		slog.Debug("Decoded request", "unit", request.Unit, "property", request.Property.Name, "value", request.Property.Value)
+		
 		var newLimit int64
 		var fallback bool = false
 
