@@ -1,7 +1,6 @@
 package hierarchy
 
 import (
-	"fmt"
 	"log/slog"
 	"math"
 	"os"
@@ -86,7 +85,6 @@ func (u *Unified) CGroupInfo(cg string) (CGroupInfo, error) {
 var SwapRatio float64 = 0.1
 
 func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
-	fmt.Printf("swap %f", SwapRatio)
 	manager, err := cgroup2.Load(path.Join(u.Root, unit))
 	if err != nil {
 		return -1, err
