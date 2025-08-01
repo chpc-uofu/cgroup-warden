@@ -58,7 +58,12 @@ func NewConfig() (*Config, error) {
 		return nil, fmt.Errorf("Invalid log level. Options include %v", levels)
 	}
 
+	if c.SwapRatio < 0 {
+		return nil, fmt.Errorf("Invalid swap ratio %f. Cannot be negative", c.SwapRatio)
+	}
+
 	hierarchy.SwapRatio = c.SwapRatio
+
 
 	return &c, err
 }
