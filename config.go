@@ -6,18 +6,20 @@ import (
 	"strings"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/chpc-uofu/cgroup-warden/hierarchy"
 	"github.com/containerd/cgroups/v3/cgroup2"
 )
 
 type Config struct {
-	RootCGroup    string `env:"ROOT_CGROUP" envDefault:"/user.slice"`
-	ListenAddress string `env:"LISTEN_ADDRESS" envDefault:":2112"`
-	Certificate   string `env:"CERTIFICATE"`
-	PrivateKey    string `env:"PRIVATE_KEY"`
-	BearerToken   string `env:"BEARER_TOKEN"`
-	InsecureMode  bool   `env:"INSECURE_MODE" envDefault:"false"`
-	MetaMetrics   bool   `env:"META_METRICS" envDefault:"true"`
-	LogLevel      string `env:"LOG_LEVEL" envDefault:"info"`
+	RootCGroup    string  `env:"ROOT_CGROUP" envDefault:"/user.slice"`
+	ListenAddress string  `env:"LISTEN_ADDRESS" envDefault:":2112"`
+	Certificate   string  `env:"CERTIFICATE"`
+	PrivateKey    string  `env:"PRIVATE_KEY"`
+	BearerToken   string  `env:"BEARER_TOKEN"`
+	InsecureMode  bool    `env:"INSECURE_MODE" envDefault:"false"`
+	MetaMetrics   bool    `env:"META_METRICS" envDefault:"true"`
+	LogLevel      string  `env:"LOG_LEVEL" envDefault:"info"`
+	SwapRatio     float64 `env:"SWAP_RATIO" envDefault:"0.1"`
 }
 
 func NewConfig() (*Config, error) {
@@ -55,6 +57,13 @@ func NewConfig() (*Config, error) {
 	if !slices.Contains(levels, c.LogLevel) {
 		return nil, fmt.Errorf("Invalid log level. Options include %v", levels)
 	}
+
+	if c.SwapRatio < 0 {
+		return nil, fmt.Errorf("Invalid swap ratio %f. Cannot be negative", c.SwapRatio)
+	}
+
+	hierarchy.SwapRatio = c.SwapRatio
+
 
 	return &c, err
 }
