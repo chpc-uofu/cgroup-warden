@@ -82,7 +82,7 @@ func (u *Unified) CGroupInfo(cg string) (CGroupInfo, error) {
 	return info, nil
 }
 
-const SwapRatio float64 = 0.1
+var SwapRatio float64 = 0.1
 
 func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
 	manager, err := cgroup2.Load(path.Join(u.Root, unit))
@@ -95,14 +95,13 @@ func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
 		return -1, err
 	}
 
-
-	newMax := max(limit, int64(stat.Memory.Usage + LimitBuffer))
+	newMax := max(limit, int64(stat.Memory.Usage+LimitBuffer))
 	newSwap := int64(float64(limit) * SwapRatio)
 
 	resources := &cgroup2.Resources{
 		Memory: &cgroup2.Memory{
 			Swap: &newSwap,
-			Max: &newMax,
+			Max:  &newMax,
 		},
 	}
 
