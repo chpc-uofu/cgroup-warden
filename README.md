@@ -8,10 +8,6 @@ cgroup-warden is a daemon that provides a way to set resource limits on those cg
 
 ## Installation
 
-
-### Releases
-Pre-built binaries can be found on the [Releases](https://github.com/chpc-uofu/cgroup-warden/releases) page.
-
 ### Build from source
 The binary can also be built from source.
 ```
