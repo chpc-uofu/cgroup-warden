@@ -16,7 +16,6 @@ type Legacy struct {
 	Root string
 }
 
-
 func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 	cgroup := path.Join(l.Root, unit)
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
@@ -26,14 +25,14 @@ func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 
 	stat, err := manager.Stat(cgroup1.IgnoreNotExist)
 	if err != nil || stat == nil || stat.Memory == nil {
-		return  -1, err
+		return -1, err
 	}
-	
-	newLimit := max(limit, int64(stat.Memory.Swap.Usage + LimitBuffer))
+
+	newLimit := max(limit, int64(stat.Memory.Swap.Usage+LimitBuffer))
 
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
-			Swap: &newLimit,
+			Swap:  &newLimit,
 			Limit: &newLimit,
 		},
 	}
@@ -119,8 +118,8 @@ func readCPUQuotaLegacy(cg string) int64 {
 
 	quotaBuffer, err := os.ReadFile(pathQuota)
 	if err != nil {
-		slog.Error("unable to read cpu quota", "err", err)
-		return 0
+		slog.Debug("unable to read cpu quota, assuming limit is unset", "err", err)
+		return -1
 	}
 
 	quota, err := strconv.ParseInt(strings.TrimSpace(string(quotaBuffer)), 10, 64)

@@ -114,8 +114,8 @@ func readCPUQuotaUnified(cg string) int64 {
 	p := path.Join(cgroupPath, "cpu.max")
 	buf, err := os.ReadFile(p)
 	if err != nil {
-		slog.Error("unable to read cpu quota", "err", err)
-		return 0
+		slog.Debug("unable to read cpu quota, assuming limit is unset:", "err", err)
+		return -1
 	}
 	values := strings.Split(strings.TrimSpace(string(buf)), " ")
 
