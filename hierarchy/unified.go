@@ -41,8 +41,8 @@ func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
 	newMax := max(limit, int64(stat.Memory.Usage+LimitBuffer))
 	newSwap := int64(float64(limit) * SwapRatio)
 
-	memory_max := systemd.Property{Name: `MemoryMax`, Value: dbus.MakeVariant(newMax)}
-	memory_swap_max := systemd.Property{Name: `MemorySwapMax`, Value: dbus.MakeVariant(newSwap)}
+	memory_max := systemd.Property{Name: `MemoryMax`, Value: dbus.MakeVariant(uint64(newMax))}
+	memory_swap_max := systemd.Property{Name: `MemorySwapMax`, Value: dbus.MakeVariant(uint64(newSwap))}
 
 	err = conn.SetUnitPropertiesContext(ctx, unit, false, memory_max, memory_swap_max)
 

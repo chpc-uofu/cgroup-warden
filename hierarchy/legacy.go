@@ -43,16 +43,17 @@ func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
-			Swap: &newLimit,
+			Swap:  &newLimit,
+			Limit: &newLimit,
 		},
 	}
-
-	newMaxLimit := dbus.MakeVariant(newLimit)
 
 	err = manager.Update(resources)
 	if err != nil {
 		return -1, err
 	}
+
+	newMaxLimit := dbus.MakeVariant(uint64(newLimit))
 
 	memory_max := systemd.Property{Name: `MemoryMax`, Value: newMaxLimit}
 
