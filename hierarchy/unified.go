@@ -1,6 +1,7 @@
 package hierarchy
 
 import (
+	"context"
 	"log/slog"
 	"math"
 	"os"
@@ -9,10 +10,47 @@ import (
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup2"
+	systemd "github.com/coreos/go-systemd/v22/dbus"
+	"github.com/godbus/dbus/v5"
 )
 
 type Unified struct {
 	Root string
+}
+
+var SwapRatio float64 = 0.1
+
+func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
+	ctx := context.Background()
+	conn, err := systemd.NewSystemConnectionContext(ctx)
+	if err != nil {
+		slog.Warn("unable to connect to systemd", "err", err.Error())
+		return -1, err
+	}
+
+	manager, err := cgroup2.Load(path.Join(u.Root, unit))
+	if err != nil {
+		return -1, err
+	}
+
+	stat, err := manager.Stat()
+	if err != nil || stat == nil || stat.Memory == nil {
+		return -1, err
+	}
+
+	newMax := max(limit, int64(stat.Memory.Usage+LimitBuffer))
+	newSwap := int64(float64(limit) * SwapRatio)
+
+	memory_max := systemd.Property{Name: `MemoryMax`, Value: dbus.MakeVariant(newMax)}
+	memory_swap_max := systemd.Property{Name: `MemorySwapMax`, Value: dbus.MakeVariant(newSwap)}
+
+	err = conn.SetUnitPropertiesContext(ctx, unit, false, memory_max, memory_swap_max)
+
+	if err != nil {
+		return -1, err
+	}
+
+	return newMax, err
 }
 
 func (u *Unified) GetGroupsWithPIDs() (map[string]map[uint64]bool, error) {
@@ -80,33 +118,6 @@ func (u *Unified) CGroupInfo(cg string) (CGroupInfo, error) {
 
 	info.Username = username
 	return info, nil
-}
-
-var SwapRatio float64 = 0.1
-
-func (u *Unified) SetMemoryLimits(unit string, limit int64) (int64, error) {
-	manager, err := cgroup2.Load(path.Join(u.Root, unit))
-	if err != nil {
-		return -1, err
-	}
-
-	stat, err := manager.Stat()
-	if err != nil || stat == nil || stat.Memory == nil {
-		return -1, err
-	}
-
-	newMax := max(limit, int64(stat.Memory.Usage+LimitBuffer))
-	newSwap := int64(float64(limit) * SwapRatio)
-
-	resources := &cgroup2.Resources{
-		Memory: &cgroup2.Memory{
-			Swap: &newSwap,
-			Max:  &newMax,
-		},
-	}
-
-	err = manager.Update(resources)
-	return newMax, err
 }
 
 func readCPUQuotaUnified(cg string) int64 {
