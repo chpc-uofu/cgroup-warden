@@ -1,6 +1,7 @@
 package hierarchy
 
 import (
+	"context"
 	"log/slog"
 	"math"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/containerd/cgroups/v3/cgroup1"
+	systemd "github.com/coreos/go-systemd/v22/dbus"
+	"github.com/godbus/dbus/v5"
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -18,6 +21,14 @@ type Legacy struct {
 
 func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 	cgroup := path.Join(l.Root, unit)
+
+	ctx := context.Background()
+	conn, err := systemd.NewSystemConnectionContext(ctx)
+	if err != nil {
+		slog.Warn("unable to connect to systemd", "err", err.Error())
+		return -1, err
+	}
+
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
 		return -1, err
@@ -29,15 +40,27 @@ func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 	}
 
 	newLimit := max(limit, int64(stat.Memory.Swap.Usage+LimitBuffer))
+	
+	newMaxLimit := dbus.MakeVariant(uint64(newLimit))
+	memoryMax := systemd.Property{Name: `MemoryMax`, Value: newMaxLimit}
+
+	err = conn.SetUnitPropertiesContext(ctx, unit, false, memoryMax)
+
+	if err != nil {
+		return -1, err
+	}
 
 	resources := &specs.LinuxResources{
 		Memory: &specs.LinuxMemory{
 			Swap:  &newLimit,
-			Limit: &newLimit,
 		},
 	}
 
 	err = manager.Update(resources)
+	if err != nil {
+		return -1, err
+	}
+
 	return newLimit, err
 }
 

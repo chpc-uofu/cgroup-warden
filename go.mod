@@ -1,6 +1,6 @@
 module github.com/chpc-uofu/cgroup-warden
 
-go 1.23.0
+go 1.24
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
@@ -18,7 +18,7 @@ require (
 	github.com/cilium/ebpf v0.17.1 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
