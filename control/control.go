@@ -7,12 +7,24 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/chpc-uofu/cgroup-warden/hierarchy"
 	//"github.com/containerd/cgroups/v3"
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	dbus "github.com/godbus/dbus/v5"
 )
+
+// userSlicePattern restricts /control to per-user slices. Anything else,
+// including "" (which systemd resolves to the caller's own unit), is rejected.
+var userSlicePattern = regexp.MustCompile(`^user-[0-9]+\.slice$`)
+
+func validateUnit(unit string) error {
+	if !userSlicePattern.MatchString(unit) {
+		return fmt.Errorf("unit must be a per-user slice such as user-1000.slice, got %q", unit)
+	}
+	return nil
+}
 
 // properties that can be modified at runtime
 var (
@@ -73,15 +85,21 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 		response.Unit = request.Unit
 		response.Property = request.Property
 
+		if err = validateUnit(request.Unit); err != nil {
+			slog.Warn("rejected control request", "unit", request.Unit, "address", r.RemoteAddr, "err", err.Error())
+			status = http.StatusBadRequest
+			return
+		}
+
 		slog.Debug("Decoded request", "unit", request.Unit, "property", request.Property.Name, "value", request.Property.Value)
-		
+
 		var newLimit int64
 		var fallback bool = false
 
 		if request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax {
 			newLimit, fallback, err = setCGroupMemoryLimits(request, cgroupRoot)
 
-			if newLimit == hierarchy.MaxCGroupMemoryLimit{
+			if newLimit == hierarchy.MaxCGroupMemoryLimit {
 				response.Property.Value = -1
 			} else {
 				response.Property.Value = newLimit
