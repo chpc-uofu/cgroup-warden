@@ -153,7 +153,20 @@ func transform(controlProp controlProperty) (systemd.Property, error) {
 			return property, errors.New("invalid type for property, expected bool")
 		}
 		property.Value = dbus.MakeVariant(val)
-	case CPUQuotaPerSecUSec, MemoryMax, MemoryHigh, MemoryMin, MemoryLow, MemorySwapMax:
+	case CPUQuotaPerSecUSec:
+		val, ok := controlProp.Value.(float64) // json type
+		if !ok {
+			return property, errors.New("invalid type for property, expected float64")
+		}
+
+		if val < 0 {
+			// systemd clears the quota with UINT64_MAX ("infinity") and rejects 0.
+			// uint64(negative float) is implementation-defined in Go, so map it explicitly.
+			property.Value = dbus.MakeVariant(^uint64(0))
+		} else {
+			property.Value = dbus.MakeVariant(uint64(val))
+		}
+	case MemoryMax, MemoryHigh, MemoryMin, MemoryLow, MemorySwapMax:
 		val, ok := controlProp.Value.(float64) // json type
 		if !ok {
 			return property, errors.New("invalid type for property, expected float64")
