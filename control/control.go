@@ -74,14 +74,14 @@ func ControlHandler(cgroupRoot string) http.HandlerFunc {
 		response.Property = request.Property
 
 		slog.Debug("Decoded request", "unit", request.Unit, "property", request.Property.Name, "value", request.Property.Value)
-		
+
 		var newLimit int64
 		var fallback bool = false
 
 		if request.Property.Name == MemorySwapMax || request.Property.Name == MemoryMax {
 			newLimit, fallback, err = setCGroupMemoryLimits(request, cgroupRoot)
 
-			if newLimit == hierarchy.MaxCGroupMemoryLimit{
+			if newLimit == hierarchy.MaxCGroupMemoryLimit {
 				response.Property.Value = -1
 			} else {
 				response.Property.Value = newLimit
