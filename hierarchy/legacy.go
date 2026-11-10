@@ -28,6 +28,7 @@ func (l *Legacy) SetMemoryLimits(unit string, limit int64) (int64, error) {
 		slog.Warn("unable to connect to systemd", "err", err.Error())
 		return -1, err
 	}
+	defer conn.Close()
 
 	manager, err := cgroup1.Load(cgroup1.StaticPath(cgroup), cgroup1.WithHierarchy(subsystem))
 	if err != nil {
