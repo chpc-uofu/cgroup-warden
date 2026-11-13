@@ -90,7 +90,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 			memoryUsage := float64(info.MemoryUsage)
 			
-			procs, err = ProcessInfo(cg, pids)
+			procs, err := ProcessInfo(cg, pids)
 			
 			if err != nil {
 				slog.Warn("unable to collect process info", "cgroup", cg, "err", err)
@@ -105,7 +105,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(c.procCount, prometheus.GaugeValue, float64(p.count), cg, info.Username, name)
 				}
 
-				memoryUsage = totalPSS
+				if len(procs) > 0 {
+					memoryUsage = totalPSS
+				}
 			}
 
 			ch <- prometheus.MustNewConstMetric(c.memoryUsage, prometheus.GaugeValue, memoryUsage, cg, info.Username)
